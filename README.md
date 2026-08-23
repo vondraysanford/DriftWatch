@@ -34,6 +34,7 @@ Plenty of candidates can train a model in a notebook. Far fewer can operationali
 - DVC (Data Version Control) — dataset and pipeline versioning
 
 **Deployment & Infrastructure**
+- Bicep — Azure infrastructure as code (workspace, registry, budget alerts)
 - Azure Machine Learning — training, registry, and a demonstrated managed online endpoint
 - Azure Container Apps — persistent scale-to-zero demo endpoint
 - Azure Container Registry — image hosting
@@ -112,6 +113,7 @@ drift-watch/
 │   ├── drift.py            # Evidently drift + performance checks
 │   └── retrain_trigger.py  # threshold → repository_dispatch
 ├── dashboard/              # React drift/performance UI
+├── infra/                  # Bicep: resource group, ML workspace, ACR, budget alert
 ├── .github/workflows/
 │   ├── deploy.yml          # CI/CD: test, build, push, deploy (OIDC)
 │   └── retrain.yml         # dispatch-triggered retrain → evaluate → register

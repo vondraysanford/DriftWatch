@@ -22,21 +22,23 @@ At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipel
 ## Phase 0 — Prerequisites and Setup (½ weekend)
 
 1. Install Python 3.11 and create a virtual environment.
-2. Set up an Azure account. The free tier plus new-account credits cover this project **if** you follow the cost rules in Common Pitfalls — read them now, especially the managed-endpoint one. Create a resource group, an Azure ML workspace, and an Azure Container Registry.
+2. Set up an Azure account. The free tier plus new-account credits cover this project **if** you follow the cost rules in Common Pitfalls — read them now, especially the managed-endpoint one. Stand up the durable Azure footprint with Bicep templates in `infra/`, deployed with `az deployment`: resource group (eastus2), Azure ML workspace and its dependencies, and an Azure Container Registry. The same deployment puts a budget alert on the resource group (percentage notifications at 50/80/100%) before anything else exists. Identity setup (Entra app registration, OIDC federated credential) and the ephemeral managed-endpoint demo stay imperative CLI, on purpose.
 3. Install the Azure CLI and authenticate (`az login`).
 4. Initialize the git repo using the README layout.
-5. Install core libraries: `pandas`, `numpy`, `scikit-learn`, `xgboost`, `optuna`, `mlflow`, `evidently`, `dvc`, `fastapi`, `uvicorn`, plus `azure-ai-ml`.
+5. Install core libraries: `pandas`, `numpy`, `scikit-learn`, `xgboost`, `optuna`, `mlflow`, `evidently`, `dvc[azure]`, `fastapi`, `uvicorn`, plus `azure-ai-ml` and `azureml-mlflow` (the plugin MLflow needs to reach the workspace). All exact-pinned in `requirements.txt`.
 6. **Point MLflow at the workspace.** Retrieve the workspace's MLflow tracking URI (`az ml workspace show --query mlflow_tracking_uri`) and set `MLFLOW_TRACKING_URI`. The Azure ML workspace *is* an MLflow tracking server and model registry — no local server to run, and every run you log shows up in Azure ML studio. Same code, dramatically more AI-300-aligned evidence.
 
 **Checkpoint:** `az ml workspace show` returns your workspace, and a trivial MLflow test run appears in Azure ML studio's experiment view.
+
+✅ **Done 2026-08-23.** Deployment `driftwatch-infra` created the footprint (resource group `DriftWatch`, eastus2, six resources plus the $30 budget); the `phase0-smoke-test` run with `setup_complete=1` confirmed in studio.
 
 ---
 
 ## Phase 1 — Data and Feature Engineering (1 weekend)
 
-1. Download the NASA C-MAPSS Turbofan dataset. It ships as **four subsets (FD001–FD004) with different operating conditions and fault modes.** Train on FD001 only. **Set FD002 and FD004 aside untouched — they are your "production" traffic for drift detection in Phase 5.** Don't explore them, don't peek; contamination here weakens the entire drift story.
-2. Initialize DVC in the repo and add the raw data under DVC tracking. This is data versioning — a core MLOps practice that signals maturity.
-3. Explore FD001 in a notebook: understand the sensors, the failure cycles, and how to frame the target (binary "fails within N cycles" is the simplest start; remaining-useful-life regression is a stretch goal — treat it as optional and don't promise its numbers anywhere).
+1. Download the NASA C-MAPSS Turbofan dataset. It ships as **four subsets (FD001–FD004) with different operating conditions and fault modes.** Train on FD001 only. FD003 goes unused (it shares FD001's single operating condition, so it makes a weak drift case). **Set FD002 and FD004 aside untouched — they are your "production" traffic for drift detection in Phase 5.** Don't explore them, don't peek; contamination here weakens the entire drift story.
+2. Initialize DVC in the repo and add the raw data under DVC tracking. Use an Azure Blob container in the project resource group as the DVC remote. This is data versioning — a core MLOps practice that signals maturity.
+3. Explore FD001 in a notebook: understand the sensors, the failure cycles, and how to frame the target (binary "fails within N cycles" is the simplest start, default N = 30, finalized during this exploration; remaining-useful-life regression is a stretch goal — treat it as optional and don't promise its numbers anywhere).
 4. Write `data/ingest.py` (load + version) and `data/features.py`:
    - Rolling-window statistics (mean, std, min, max over the last k cycles).
    - Lag features.
@@ -61,9 +63,9 @@ At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipel
 
 ## Phase 3 — Serve the Model (½ weekend)
 
-1. Write `serving/app.py` with FastAPI: a `/predict` endpoint that accepts sensor feature input and returns a failure probability.
-2. Load the registered model from the registry once at startup.
-3. Log every prediction (inputs + output + timestamp) to a store — these logs feed drift monitoring later, so this step is not optional.
+1. Write `serving/app.py` with FastAPI: a `/predict` endpoint that accepts a window of raw cycles for one engine, computes features server-side with the same `data/features.py` used in training, and returns a failure probability.
+2. Bake the model into the image at build time: the Docker build pulls the registered version from the workspace registry (same pattern as DocQuery and AgentReview), and the app loads it from a local path at startup. No runtime registry pull, no runtime credential for model loading.
+3. Log every prediction (raw inputs + computed features + output + timestamp). The sink is configuration-driven: a Postgres instance in Docker locally, JSONL in Azure Blob Storage via managed identity on Container Apps (the Container Apps filesystem is ephemeral at min replicas 0). These logs feed drift monitoring later, so this step is not optional.
 4. Write the `Dockerfile` and test the container locally.
 
 **Checkpoint:** A local container serves predictions and writes prediction logs.
@@ -78,9 +80,9 @@ This phase is where your existing DevOps experience shines and most ML candidate
 2. Write `.github/workflows/deploy.yml` with stages:
    - **Test:** run unit tests and a data/feature sanity check.
    - **Build:** build the Docker image, push to Azure Container Registry.
-   - **Deploy:** see step 3.
+   - **Deploy:** Container Apps only; the managed-endpoint demonstration is a separate manually triggered workflow (see step 3).
 3. **Deploy twice, on purpose:**
-   - **Azure ML managed online endpoint — the demonstration.** Deploy the registered model, smoke-test it, and capture invocation logs, latency numbers, and screenshots. Then **tear it down.** Managed online endpoints bill for at least one instance around the clock — there is no scale-to-zero — which quietly runs $70+/month if left up.
+   - **Azure ML managed online endpoint — the demonstration.** A separate `workflow_dispatch`-triggered workflow, never part of the merge pipeline. Deploy the registered model, smoke-test it, and capture invocation logs, latency numbers, and screenshots. Then **tear it down.** Managed online endpoints bill for at least one instance around the clock — there is no scale-to-zero — which quietly runs $70+/month if left up.
    - **Azure Container Apps — the persistent demo.** Deploy the same image with min replicas set to 0. This is the endpoint that stays live for your README and dashboard, and it costs ~$0 when idle. It's the same pattern AgentReview already runs on.
 4. Trigger the pipeline on merge to `main`. Confirm a code change flows automatically to the live endpoint, then smoke-test it with a real request.
 
@@ -96,8 +98,9 @@ This is the project's differentiator. Detecting silent model decay is exactly wh
    - **Reference** distribution: the FD001 training features.
    - **Current** distribution: production inputs from your prediction logs.
    - Compute data-drift metrics and, where labels become available, performance decay.
-2. **Create the drift with real data, not synthetic jitter: replay FD002 (or FD004) through the live endpoint as "production" traffic.** These subsets have genuinely different operating conditions and fault modes, so your detector fires on an *actual regime change*. "My monitor caught a real distribution shift" is a far better interview line than "I perturbed my features." (Optionally keep a small synthetic-shift case as a unit test of the detector itself.)
-3. **Make the retrain trigger a real mechanism.** In `monitoring/retrain_trigger.py`: when drift crosses the threshold, fire a `repository_dispatch` event to GitHub. A `retrain.yml` Actions workflow retrains on the expanded data, evaluates the challenger against the current champion, and registers the new version. (Optional: require manual approval via a protected environment before the new version deploys.)
+   - Run it as a scheduled GitHub Actions workflow, not by hand.
+2. **Create the drift with real data, not synthetic jitter: replay FD002 (or FD004) through the live endpoint as "production" traffic.** Replay the run-to-failure trajectories so labels are derivable after the fact (the retrain and the champion-vs-challenger evaluation need them). These subsets have genuinely different operating conditions and fault modes, so your detector fires on an *actual regime change*. "My monitor caught a real distribution shift" is a far better interview line than "I perturbed my features." (Optionally keep a small synthetic-shift case as a unit test of the detector itself.)
+3. **Make the retrain trigger a real mechanism.** In `monitoring/retrain_trigger.py`: when drift crosses the threshold, fire a `repository_dispatch` event to GitHub using a fine-grained PAT scoped to this repo, stored as an Actions secret (the built-in `GITHUB_TOKEN` cannot start workflows; this is a GitHub credential, not a cloud secret, so the "no stored cloud secrets" claim holds). A `retrain.yml` Actions workflow retrains on FD001 plus the replayed regime, evaluates the challenger against the current champion on a mixed held-out test set (split by engine unit), and registers the new version. (Optional: require manual approval via a protected environment before the new version deploys.)
 
 **Checkpoint:** Drift detected on the FD002/FD004 replay, and the dispatch → retrain → evaluate → register loop demonstrably runs end to end.
 
