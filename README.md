@@ -1,5 +1,18 @@
 # DriftWatch — End-to-End ML Pipeline with Drift Monitoring
 
+[![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
+[![License: MIT](https://img.shields.io/github/license/vondraysanford/DriftWatch)](LICENSE)
+[![Build plan: phase 0 of 6 complete](https://img.shields.io/badge/build_plan-phase_0_of_6_complete-orange)](DriftWatch-Guide.md)
+[![Last commit](https://img.shields.io/github/last-commit/vondraysanford/DriftWatch)](https://github.com/vondraysanford/DriftWatch/commits/main)
+
+[![Azure ML](https://img.shields.io/badge/Azure_ML-0078D4)](https://azure.microsoft.com/products/machine-learning)
+[![MLflow](https://img.shields.io/badge/MLflow-0194E2?logo=mlflow&logoColor=white)](https://mlflow.org/)
+[![DVC](https://img.shields.io/badge/DVC-13ADC7?logo=dvc&logoColor=white)](https://dvc.org/)
+[![Evidently](https://img.shields.io/badge/Evidently-ed0400)](https://www.evidentlyai.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+
 A production-grade machine learning pipeline that predicts equipment failure from sensor time-series data, deployed to Azure through a secretless (OIDC) GitHub Actions pipeline, and monitored for real distribution shift in production. Covers the full MLOps lifecycle: ingestion, feature engineering, training with hyperparameter tuning, deployment, drift detection, and automated retraining.
 
 This project bridges enterprise software engineering with machine learning operations — proving you can not only train a model but ship and maintain it as a reliable production service.
