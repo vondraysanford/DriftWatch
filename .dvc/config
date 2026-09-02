@@ -1,0 +1,5 @@
+[core]
+    remote = azure
+['remote "azure"']
+    url = azure://dvc
+    account_name = stdriftw7h3t7p2z3jznw
