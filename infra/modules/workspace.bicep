@@ -1,9 +1,13 @@
 // Azure ML workspace with its required companions (storage, key vault, app insights),
-// the container registry, and the blob containers later phases depend on
-// (dvc = DVC remote, predictions = serving logs).
+// the container registry, the blob containers later phases depend on
+// (dvc = DVC remote, predictions = serving logs), and the blob data-plane role
+// that lets the developer identity push/pull DVC objects via `az login` (no keys).
 
 @description('Region, inherited from main')
 param location string
+
+@description('Object ID of the identity granted blob data access (the developer running DVC)')
+param storageDataPrincipalId string
 
 // Stable per resource group, so teardown + redeploy reproduces the same names.
 var suffix = uniqueString(resourceGroup().id)
@@ -39,6 +43,24 @@ resource predictionsContainer 'Microsoft.Storage/storageAccounts/blobServices/co
   name: 'predictions'
   properties: {
     publicAccess: 'None'
+  }
+}
+
+// Owner/Contributor are control-plane only; reading and writing blobs through
+// Entra ID needs a data-plane role. Built-in role: Storage Blob Data Contributor.
+var storageBlobDataContributorRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+)
+
+resource storageDataRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  // Deterministic name keeps the assignment idempotent across redeploys.
+  name: guid(storage.id, storageDataPrincipalId, storageBlobDataContributorRoleId)
+  scope: storage
+  properties: {
+    roleDefinitionId: storageBlobDataContributorRoleId
+    principalId: storageDataPrincipalId
+    principalType: 'User'
   }
 }
 

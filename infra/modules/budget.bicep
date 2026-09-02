@@ -7,8 +7,11 @@ param budgetAmount int
 @description('Alert recipient')
 param alertEmail string
 
-// Budgets require a period start; default to the first of the current month.
-param startDate string = utcNow('yyyy-MM-01')
+// Azure refuses to change a budget's start date once it exists ("Start date of budgets
+// cannot be updated"), so this must be a stable value, not utcNow(). Pinned to the month
+// the budget was first created. After a full teardown, pass the first of the current month.
+@description('First day of the budget period (yyyy-MM-01). Must not change for an existing budget.')
+param startDate string
 
 resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
   name: 'budget-driftwatch'

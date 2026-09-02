@@ -1,6 +1,7 @@
 // DriftWatch durable Azure footprint (see CLAUDE.md decision 18).
-// Preview: az deployment sub what-if --name driftwatch-infra --location eastus2 --template-file infra/main.bicep --parameters alertEmail=<you>
-// Deploy:  az deployment sub create  --name driftwatch-infra --location eastus2 --template-file infra/main.bicep --parameters alertEmail=<you>
+// Your object ID: az ad signed-in-user show --query id -o tsv
+// Preview: az deployment sub what-if --name driftwatch-infra --location eastus2 --template-file infra/main.bicep --parameters alertEmail=<you> storageDataPrincipalId=<your object id>
+// Deploy:  az deployment sub create  --name driftwatch-infra --location eastus2 --template-file infra/main.bicep --parameters alertEmail=<you> storageDataPrincipalId=<your object id>
 targetScope = 'subscription'
 
 @description('Region for the resource group and all resources')
@@ -9,8 +10,14 @@ param location string = 'eastus2'
 @description('Monthly budget alert amount in USD')
 param budgetAmount int = 30
 
+@description('First day of the budget period. Azure cannot update it after creation; only override after a full teardown (first of the current month).')
+param budgetStartDate string = '2026-08-01'
+
 @description('Recipient for budget alerts. Deploy-time parameter only; never commit a value.')
 param alertEmail string
+
+@description('Object ID of the developer identity granted blob data access for DVC push/pull. Deploy-time parameter only; never commit a value.')
+param storageDataPrincipalId string
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: 'DriftWatch'
@@ -22,6 +29,7 @@ module workspace 'modules/workspace.bicep' = {
   scope: rg
   params: {
     location: location
+    storageDataPrincipalId: storageDataPrincipalId
   }
 }
 
@@ -30,6 +38,7 @@ module budget 'modules/budget.bicep' = {
   scope: rg
   params: {
     budgetAmount: budgetAmount
+    startDate: budgetStartDate
     alertEmail: alertEmail
   }
 }
