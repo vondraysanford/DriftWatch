@@ -37,8 +37,17 @@ At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipel
 ## Phase 1 — Data and Feature Engineering (1 weekend)
 
 1. Download the NASA C-MAPSS Turbofan dataset. It ships as **four subsets (FD001–FD004) with different operating conditions and fault modes.** Train on FD001 only. FD003 goes unused (it shares FD001's single operating condition, so it makes a weak drift case). **Set FD002 and FD004 aside untouched — they are your "production" traffic for drift detection in Phase 5.** Don't explore them, don't peek; contamination here weakens the entire drift story.
+
+   ✅ *Done 2026-08-23.* All four subsets, NASA's readme, and the PHM08 paper sit in `data/raw/` (14 files). Nothing has opened FD002/FD004.
+
 2. Initialize DVC in the repo and add the raw data under DVC tracking. Use an Azure Blob container in the project resource group as the DVC remote. This is data versioning — a core MLOps practice that signals maturity.
+
+   ✅ *Done 2026-09-02.* `dvc init`; `data/raw` tracked as one artifact (`data/raw.dvc`); default remote `azure://dvc` on the Phase 0 storage account, authenticated through `az login` via a Storage Blob Data Contributor role added to `infra/` (no keys). Verified: `dvc status -c` reports cache and remote in sync, and a `dvc pull` into a fresh repo matched the originals byte for byte.
+
 3. Explore FD001 in a notebook: understand the sensors, the failure cycles, and how to frame the target (binary "fails within N cycles" is the simplest start, default N = 30, finalized during this exploration; remaining-useful-life regression is a stretch goal — treat it as optional and don't promise its numbers anywhere).
+
+   ✅ *Done 2026-09-02.* `notebooks/01_fd001_exploration.ipynb`, committed with outputs, reads FD001 only (single `SUBSET` constant). Findings: 100 engines, lifetimes 128 to 362 cycles; operating settings constant, single regime confirmed; 7 of 21 sensors have two or fewer distinct values and are dropped by that rule; the strongest sensors sit 2 to 4 SD from healthy baseline inside the last 30 cycles and under 1 SD past 60. Decisions: N = 30 (15% positive rate), rolling window k = 20 (shortest official test engine is 31 cycles), settings excluded from features but kept in the raw prediction log.
+
 4. Write `data/ingest.py` (load + version) and `data/features.py`:
    - Rolling-window statistics (mean, std, min, max over the last k cycles).
    - Lag features.
