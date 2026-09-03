@@ -113,8 +113,10 @@ Built in public — posts land at [vondraysanford.com](https://vondraysanford.co
 ```
 drift-watch/
 ├── data/
-│   ├── ingest.py           # load + version raw sensor data (DVC)
-│   └── features.py         # rolling/lag/frequency features
+│   ├── schema.py           # raw C-MAPSS column layout shared by every stage
+│   ├── ingest.py           # load + validate raw cycles, derive RUL (DVC-versioned)
+│   ├── features.py         # rolling/lag features + label, shared with serving
+│   └── split.py            # hold out whole engines for evaluation
 ├── training/
 │   ├── train.py            # model training + MLflow logging (Azure ML workspace)
 │   ├── tune.py             # Optuna hyperparameter search

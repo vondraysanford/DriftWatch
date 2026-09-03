@@ -1,0 +1,116 @@
+schema: '2.0'
+stages:
+  ingest_train:
+    cmd: python -m data.ingest --subset FD001 --kind train --out 
+      data/interim/fd001_train.parquet
+    deps:
+    - path: data/ingest.py
+      hash: md5
+      md5: f7a119db2421991738f4050a15426cb2
+      size: 4711
+    - path: data/raw/train_FD001.txt
+      hash: md5
+      md5: 259f340bac32ce6fa8894815600fa757
+      size: 3515356
+    - path: data/schema.py
+      hash: md5
+      md5: 2e62dc9b0ed28a8406496115b52bf343
+      size: 715
+    outs:
+    - path: data/interim/fd001_train.parquet
+      hash: md5
+      md5: cd4a6c4051a47f8b544c4f411f9451c6
+      size: 533926
+  ingest_holdout:
+    cmd: python -m data.ingest --subset FD001 --kind test --out 
+      data/interim/fd001_test.parquet
+    deps:
+    - path: data/ingest.py
+      hash: md5
+      md5: f7a119db2421991738f4050a15426cb2
+      size: 4711
+    - path: data/raw/RUL_FD001.txt
+      hash: md5
+      md5: 8f4a8b3d2692b2f7d8e72b344927bf4b
+      size: 429
+    - path: data/raw/test_FD001.txt
+      hash: md5
+      md5: 62316d1dd70f88a9a43a1e2690765437
+      size: 2228855
+    - path: data/schema.py
+      hash: md5
+      md5: 2e62dc9b0ed28a8406496115b52bf343
+      size: 715
+    outs:
+    - path: data/interim/fd001_test.parquet
+      hash: md5
+      md5: ebf8ce261315afd29e28c0edd3a9363c
+      size: 350253
+  features_train:
+    cmd: python -m data.features --input data/interim/fd001_train.parquet 
+      --output data/processed/fd001_features.parquet --verify-sensor-rule
+    deps:
+    - path: data/features.py
+      hash: md5
+      md5: de214843853d9f3bbc4ed413d019168d
+      size: 5601
+    - path: data/interim/fd001_train.parquet
+      hash: md5
+      md5: cd4a6c4051a47f8b544c4f411f9451c6
+      size: 533926
+    - path: data/schema.py
+      hash: md5
+      md5: 2e62dc9b0ed28a8406496115b52bf343
+      size: 715
+    outs:
+    - path: data/processed/fd001_features.parquet
+      hash: md5
+      md5: f92c2e8e2c57ad85df96b5d8d4568408
+      size: 5386817
+  features_holdout:
+    cmd: python -m data.features --input data/interim/fd001_test.parquet 
+      --output data/processed/holdout_official.parquet
+    deps:
+    - path: data/features.py
+      hash: md5
+      md5: de214843853d9f3bbc4ed413d019168d
+      size: 5601
+    - path: data/interim/fd001_test.parquet
+      hash: md5
+      md5: ebf8ce261315afd29e28c0edd3a9363c
+      size: 350253
+    - path: data/schema.py
+      hash: md5
+      md5: 2e62dc9b0ed28a8406496115b52bf343
+      size: 715
+    outs:
+    - path: data/processed/holdout_official.parquet
+      hash: md5
+      md5: ff28f997c3db2464629f47623175cf74
+      size: 3291780
+  split:
+    cmd: python -m data.split --input data/processed/fd001_features.parquet 
+      --train-out data/processed/train.parquet --test-out 
+      data/processed/test.parquet --test-fraction 0.2 --seed 42
+    deps:
+    - path: data/processed/fd001_features.parquet
+      hash: md5
+      md5: f92c2e8e2c57ad85df96b5d8d4568408
+      size: 5386817
+    - path: data/schema.py
+      hash: md5
+      md5: 2e62dc9b0ed28a8406496115b52bf343
+      size: 715
+    - path: data/split.py
+      hash: md5
+      md5: a37f1f6638a768b6248c94b9a1bb0402
+      size: 2740
+    outs:
+    - path: data/processed/test.parquet
+      hash: md5
+      md5: fd32d409736e5eadfb9405b0437f8afe
+      size: 1343272
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: ea34a561feba675d8c0dea6088b49d5b
+      size: 4349878

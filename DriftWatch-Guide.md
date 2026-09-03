@@ -52,9 +52,16 @@ At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipel
    - Rolling-window statistics (mean, std, min, max over the last k cycles).
    - Lag features.
    - Optionally frequency-domain features.
+
+   ✅ *Done 2026-09-02.* `data/schema.py` (shared column layout), `data/ingest.py` (parse, validate, derive RUL; refuses FD002/FD004 by name), `data/features.py` (per kept sensor: current value, rolling mean/std/min/max over 20 cycles, deltas at lags 5 and 10, plus engine age; label = RUL ≤ 30). Frequency-domain features skipped: the trends are plain in the time domain. Serving parity verified: `build_features` on the last 20 raw cycles of one engine reproduces the training row to within 1e-10.
+
 5. Frame the supervised problem and produce a clean feature table with train/test separation **by engine unit**, not by row (avoid leakage).
 
+   ✅ *Done 2026-09-02.* `data/split.py` holds out 20 of 100 engines by seed (42): train 80 engines / 14,870 rows, test 20 engines / 3,861 rows, positive rate 0.167 / 0.161, with an assertion that no engine sits on both sides. `dvc.yaml` runs five stages (ingest_train, ingest_holdout, features_train, features_holdout, split). The official `test_FD001` becomes `holdout_official.parquet` (11,196 rows, positive rate 0.030) as a secondary evaluation set with unseen, not-yet-failed engines.
+
 **Checkpoint:** A versioned, reproducible feature table exists, `dvc repro` regenerates it, and FD002/FD004 sit untouched in raw storage.
+
+✅ **Done 2026-09-02.** `dvc repro` builds every table from `data/raw.dvc` in a few seconds; a second `dvc repro` reports everything up to date; `dvc push` sent the six outputs to `azure://dvc` and `dvc status -c` is in sync. The ingest stages depend on `train_FD001.txt`, `test_FD001.txt`, and `RUL_FD001.txt` by name, so the DAG itself shows FD002/FD004 are never read.
 
 ---
 

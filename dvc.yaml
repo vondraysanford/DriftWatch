@@ -1,0 +1,57 @@
+# DriftWatch data pipeline. Run `dvc repro` from the repo root with the venv active.
+# Only FD001 is read here: the ingest stages depend on named files, not on data/raw as a whole,
+# so the DAG itself shows that FD002/FD004 stay quarantined until Phase 5.
+stages:
+  ingest_train:
+    cmd: python -m data.ingest --subset FD001 --kind train --out data/interim/fd001_train.parquet
+    deps:
+      - data/raw/train_FD001.txt
+      - data/ingest.py
+      - data/schema.py
+    outs:
+      - data/interim/fd001_train.parquet
+
+  ingest_holdout:
+    cmd: python -m data.ingest --subset FD001 --kind test --out data/interim/fd001_test.parquet
+    deps:
+      - data/raw/test_FD001.txt
+      - data/raw/RUL_FD001.txt
+      - data/ingest.py
+      - data/schema.py
+    outs:
+      - data/interim/fd001_test.parquet
+
+  features_train:
+    cmd: >-
+      python -m data.features --input data/interim/fd001_train.parquet
+      --output data/processed/fd001_features.parquet --verify-sensor-rule
+    deps:
+      - data/interim/fd001_train.parquet
+      - data/features.py
+      - data/schema.py
+    outs:
+      - data/processed/fd001_features.parquet
+
+  features_holdout:
+    cmd: >-
+      python -m data.features --input data/interim/fd001_test.parquet
+      --output data/processed/holdout_official.parquet
+    deps:
+      - data/interim/fd001_test.parquet
+      - data/features.py
+      - data/schema.py
+    outs:
+      - data/processed/holdout_official.parquet
+
+  split:
+    cmd: >-
+      python -m data.split --input data/processed/fd001_features.parquet
+      --train-out data/processed/train.parquet --test-out data/processed/test.parquet
+      --test-fraction 0.2 --seed 42
+    deps:
+      - data/processed/fd001_features.parquet
+      - data/split.py
+      - data/schema.py
+    outs:
+      - data/processed/train.parquet
+      - data/processed/test.parquet
