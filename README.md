@@ -91,9 +91,20 @@ C-MAPSS FD001 (train)                      C-MAPSS FD002/FD004 (held out)
                                      workflow ──► evaluate ──► register v2
 ```
 
-## Results To Report
+## Results So Far
 
-- Failure-prediction metrics: ROC-AUC and precision/recall at the operating threshold, baseline vs tuned. (Add RUL RMSE only if the regression stretch goal ships.)
+Measured 2026-09-02 on FD001. Models train on 80 engines and are scored on 20 held-out engines (split by engine unit, never by row) and on NASA's official `test_FD001` holdout (100 unseen engines, cut off before failure). Label: fails within 30 cycles. The operating threshold is chosen by max F1 on out-of-fold predictions inside the training engines; the held-out engines never influence it.
+
+| Model | Held-out ROC-AUC | Held-out PR-AUC | Recall / precision at threshold | Official holdout ROC-AUC |
+|---|---|---|---|---|
+| Logistic regression (baseline) | 0.9923 | 0.9673 | 0.897 / 0.914 (t = 0.407) | 0.9929 |
+| XGBoost, defaults | 0.9899 | 0.9589 | 0.873 / 0.897 (t = 0.461) | 0.9908 |
+| XGBoost, Optuna, 50 trials | 0.9899 | 0.9593 | 0.845 / 0.903 (t = 0.537) | 0.9912 |
+
+The baseline won. On 20-cycle rolling features, FD001's degradation is close to linear, and fifty tuned trials could not beat a scaled logistic regression on engines it had never seen. Version 1 in the workspace registry is therefore the baseline, chosen by held-out ROC-AUC. Every run records the DVC hash of the data it trained on and the git commit. Phase 5's challenger-vs-champion check re-runs this comparison once the replayed regime exists.
+
+## Still To Report
+
 - Drift caught on the FD002/FD004 regime replay: which Evidently metrics fired, and at what values.
 - Retrain loop: time from drift dispatch to a newly registered model version.
 - CI/CD deploy time from merge to live endpoint.
@@ -101,12 +112,14 @@ C-MAPSS FD001 (train)                      C-MAPSS FD002/FD004 (held out)
 
 ## Build Log
 
-Built in public — posts land at [vondraysanford.com](https://vondraysanford.com) as each phase ships:
+Built in public — one post per phase lands at [vondraysanford.com](https://vondraysanford.com) as each phase ships:
 
-1. Data + baseline
+1. Data + features: quarantine, secretless DVC on Azure, leakage-safe splits
 2. Training + registry on Azure ML
-3. Secretless CI/CD to a live endpoint
-4. Catching real drift + closing the retrain loop
+3. Serving: raw cycle windows in, every prediction logged
+4. Secretless CI/CD to a live endpoint
+5. Catching real drift + closing the retrain loop
+6. Dashboard + measured results
 
 ## Repository Layout
 
@@ -117,10 +130,12 @@ drift-watch/
 │   ├── ingest.py           # load + validate raw cycles, derive RUL (DVC-versioned)
 │   ├── features.py         # rolling/lag features + label, shared with serving
 │   └── split.py            # hold out whole engines for evaluation
+├── notebooks/              # exploration only, never a pipeline stage
 ├── training/
-│   ├── train.py            # model training + MLflow logging (Azure ML workspace)
-│   ├── tune.py             # Optuna hyperparameter search
-│   └── register.py         # promote best run to the workspace registry
+│   ├── common.py           # config from env, data, models, metrics, plots, lineage tags
+│   ├── train.py            # baseline or given params → MLflow run in the Azure ML workspace
+│   ├── tune.py             # Optuna over XGBoost, grouped CV inside the training engines
+│   └── register.py         # promote the best run to the workspace registry
 ├── serving/
 │   ├── app.py              # FastAPI scoring endpoint
 │   └── Dockerfile
@@ -133,6 +148,7 @@ drift-watch/
 │   ├── deploy.yml          # CI/CD: test, build, push, deploy (OIDC)
 │   └── retrain.yml         # dispatch-triggered retrain → evaluate → register
 ├── dvc.yaml                # pipeline stages
+├── .env.example            # MLflow URI, experiment, and registry name (no secrets, never hardcoded)
 ├── requirements.txt
 └── README.md
 ```
@@ -143,14 +159,17 @@ drift-watch/
 # 1. Environment
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env        # fill MLFLOW_TRACKING_URI from `az ml workspace show`
+set -a; source .env; set +a
 
-# 2. Pull versioned data + reproduce the pipeline
+# 2. Pull versioned data + reproduce the pipeline (auth: `az login`, no keys)
 dvc pull
 dvc repro
 
-# 3. Tune + train (logs to the Azure ML workspace via MLflow)
-python training/tune.py --trials 50
-python training/register.py --metric roc_auc
+# 3. Baseline, tuned XGBoost, then register the best run (all logged to the Azure ML workspace)
+python -m training.train --model logreg
+python -m training.tune --trials 50
+python -m training.register --metric roc_auc
 
 # 4. Serve locally
 docker build -t drift-watch serving/

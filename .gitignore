@@ -11,6 +11,7 @@ __pycache__/
 # Local config & OS noise
 .env
 .DS_Store
+mlruns/
 
 # Raw data lives under DVC, never in git
 data/raw/

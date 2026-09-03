@@ -8,12 +8,14 @@ The core lesson this project teaches: **the model is maybe 20% of an ML system.*
 
 ## Build-Log Plan (decide this before Phase 0)
 
-DriftWatch is a build-in-public project. Map the posts to checkpoints now so you capture screenshots and numbers *as they happen* instead of reconstructing them in Phase 6:
+DriftWatch is a build-in-public project. One post per phase, written the moment the phase's checkpoint is verified, so screenshots and numbers are captured *as they happen* instead of reconstructed in Phase 6. Posts are generated from a factual brief (measured numbers, decisions and why, gotchas, what is explicitly not done yet) through the portfolio site's blog post generator.
 
-- **Post 1 — Data + baseline:** the C-MAPSS framing, leakage-safe splits, and the baseline number to beat.
-- **Post 2 — Training + registry:** tuned vs baseline results, with the Azure ML experiment and registry views.
-- **Post 3 — Secretless CI/CD to a live endpoint:** merge-to-live pipeline, the managed-endpoint demonstration, the scale-to-zero demo.
-- **Post 4 — Catching real drift + closing the loop:** the regime-replay detection and the automated retrain.
+- **Post 1 — Data + features (Phase 1):** the C-MAPSS framing and quarantine, secretless DVC on Azure, the evidence behind N = 30, leakage-safe splits, training/serving feature parity. *(Brief written 2026-09-02.)*
+- **Post 2 — Training + registry (Phase 2):** the baseline number to beat, tuned vs baseline results, Azure ML experiment and registry views.
+- **Post 3 — Serving (Phase 3):** `/predict` on raw cycle windows, the model baked into the image, every prediction logged.
+- **Post 4 — Secretless CI/CD to a live endpoint (Phase 4):** merge-to-live pipeline, the managed-endpoint demonstration, the scale-to-zero demo.
+- **Post 5 — Catching real drift + closing the loop (Phase 5):** the regime-replay detection and the automated retrain.
+- **Post 6 — Dashboard + measured results (Phase 6):** the numbers the README reports and what they cost.
 
 At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipeline, drift report) the moment it exists.
 
@@ -71,9 +73,16 @@ At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipel
 2. Establish a simple baseline first (e.g., logistic regression) so XGBoost's value is demonstrable.
 3. Write `training/tune.py` using Optuna to search XGBoost hyperparameters, with each trial logged as a run.
 4. Write `training/register.py` to promote the best run's model into the **workspace model registry** via MLflow's registry API. This registered, versioned model is exactly what CI/CD deploys in Phase 4.
+
+   ✅ *Steps 1 to 4 done 2026-09-02.* `training/common.py` (config from env only, data, models, metrics, plots, lineage tags), `train.py`, `tune.py`, `register.py`, all run as modules with `.env.example` variables. Experiment `driftwatch-training` in the workspace. Baseline (scaler + logistic regression): held-out ROC-AUC 0.9923, PR-AUC 0.9673, recall 0.897 / precision 0.914 at threshold 0.407 (chosen by max F1 on out-of-fold predictions inside the training engines), official holdout ROC-AUC 0.9929. XGBoost defaults: 0.9899. XGBoost after 50 Optuna trials (5-fold GroupKFold by engine, about 8 s per trial): best CV 0.9886, held-out 0.9899, holdout 0.9912. The baseline won; `register.py` picked it by held-out ROC-AUC and registered `driftwatch-failure-classifier` version 1, tagged with run id, metric, DVC data hash, and git commit. Gotcha: MLflow 3's `log_model` and `runs:/` URIs go through a logged-models endpoint the Azure ML tracking server does not implement (404). Models are uploaded as run artifacts with `mlflow.sklearn.save_model` + `log_artifacts`, and addressed by the run's artifact URI or `models:/<name>/<version>`.
+
 5. (Optional stretch) Add an LSTM in PyTorch for sequence modeling and compare it to XGBoost — a nice depth signal, but don't block the pipeline on it.
 
-**Checkpoint:** Azure ML studio shows tuned experiments and a registered, versioned model. *(Build-log posts 1–2 material: baseline-vs-tuned table, registry screenshot.)*
+   *Skipped on purpose (2026-09-02): momentum over extras until the six phases are done.*
+
+**Checkpoint:** Azure ML studio shows tuned experiments and a registered, versioned model. *(Build-log post 2 material: baseline-vs-tuned table, registry screenshot.)*
+
+✅ **Done 2026-09-03.** Three top-level runs plus 50 nested trials in the workspace; registry version 1 loads fresh via `models:/driftwatch-failure-classifier/1` and reproduces the held-out ROC-AUC of 0.9923; `az ml model list` shows the model. All training ran on the Mac; the workspace was tracking and registry only, so no Azure compute was billed.
 
 ---
 
@@ -102,7 +111,7 @@ This phase is where your existing DevOps experience shines and most ML candidate
    - **Azure Container Apps — the persistent demo.** Deploy the same image with min replicas set to 0. This is the endpoint that stays live for your README and dashboard, and it costs ~$0 when idle. It's the same pattern AgentReview already runs on.
 4. Trigger the pipeline on merge to `main`. Confirm a code change flows automatically to the live endpoint, then smoke-test it with a real request.
 
-**Checkpoint:** Merging to `main` deploys automatically; managed-endpoint evidence is captured and the endpoint torn down; a scale-to-zero Container Apps endpoint answers `curl`. *(Build-log post 3 material.)*
+**Checkpoint:** Merging to `main` deploys automatically; managed-endpoint evidence is captured and the endpoint torn down; a scale-to-zero Container Apps endpoint answers `curl`. *(Build-log post 4 material.)*
 
 ---
 
@@ -131,7 +140,7 @@ This is the project's differentiator. Detecting silent model decay is exactly wh
 2. Back it with a small FastAPI metrics endpoint reading from your logs/monitoring outputs.
 3. Finalize the README: fill in every "Results To Report" number — ROC-AUC and precision/recall at the operating threshold, drift caught on the regime replay, merge-to-live deploy time, p50/p95 latency, and the idle cost of the persistent demo. Include RUL RMSE **only** if the regression stretch actually shipped.
 4. Add an architecture diagram and 2–3 dashboard screenshots.
-5. Write a short reflection on the operational lessons — this ties the project back to real ML engineering. *(Build-log post 4.)*
+5. Write a short reflection on the operational lessons — this ties the project back to real ML engineering. *(Build-log post 6.)*
 
 **Final checkpoint:** The Container Apps endpoint live, the managed-endpoint demonstration documented, a monitoring dashboard up, and a README that walks a reader from data to deployment to drift detection with real numbers.
 
