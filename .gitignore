@@ -15,3 +15,6 @@ mlruns/
 
 # Raw data lives under DVC, never in git
 data/raw/
+
+# Model fetched from the registry at build time (python -m serving.fetch_model)
+serving/model/

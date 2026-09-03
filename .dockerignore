@@ -1,0 +1,26 @@
+# Keep the build context to the code the image needs: data/*.py, serving/, and the fetched model.
+.git
+.venv
+.dvc
+.env
+.env.example
+.ipynb_checkpoints
+__pycache__
+**/__pycache__
+*.pyc
+mlruns
+notebooks
+infra
+training
+docs
+tests
+data/raw
+data/interim
+data/processed
+data/raw.dvc
+dvc.yaml
+dvc.lock
+docker-compose.yml
+DriftWatch-Guide.md
+CLAUDE.md
+README.md

@@ -1,0 +1,38 @@
+# Local demo: the serving container plus the Postgres prediction log (decision 9).
+#   python -m serving.fetch_model && docker compose up --build
+#   curl -f localhost:8000/health
+# The database is local-only and bound to localhost; trust auth means no password to commit.
+# Image pinned by digest: postgres:17-alpine as pulled and verified 2026-09-03.
+services:
+  db:
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    environment:
+      POSTGRES_USER: driftwatch
+      POSTGRES_DB: driftwatch
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U driftwatch -d driftwatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: serving/Dockerfile
+    environment:
+      PREDICTION_SINK: postgres
+      DATABASE_URL: postgresql://driftwatch@db:5432/driftwatch
+      LOG_LEVEL: INFO
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

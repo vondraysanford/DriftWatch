@@ -93,7 +93,11 @@ At every checkpoint below, screenshot the evidence (Azure ML runs, Actions pipel
 3. Log every prediction (raw inputs + computed features + output + timestamp). The sink is configuration-driven: a Postgres instance in Docker locally, JSONL in Azure Blob Storage via managed identity on Container Apps (the Container Apps filesystem is ephemeral at min replicas 0). These logs feed drift monitoring later, so this step is not optional.
 4. Write the `Dockerfile` and test the container locally.
 
+   ✅ *Done 2026-09-03.* `serving/` holds `app.py` (`/predict`, `/health`, `/model`, JSON logs to stdout), `schemas.py` (request rows generated from `data.schema`, so serving cannot drift from ingestion), `model.py`, `sinks.py`, `config.py`, `fetch_model.py`, `requirements.txt`, `Dockerfile`, and two example bodies under `serving/examples/`. Build from the repo root (`docker build -f serving/Dockerfile .`) so the image gets the shared `data/` package. Base images pinned by digest: `python:3.11-slim` (sha256:9534e5a8…) and `postgres:17-alpine` (sha256:18cfe3ef…). Image builds in 22 s; the stack is healthy 2 s after `docker compose up`.
+
 **Checkpoint:** A local container serves predictions and writes prediction logs.
+
+✅ **Done 2026-09-03.** Held-out engine 8 scores 1.0000 (label 1) at its final cycle and 0.0352 (label 0) at cycles 41-60; the served probability matches the DVC feature table for the same engine and cycle to 6e-15. Short windows (19 cycles), mixed engine units, and cycle gaps all return 422. Latency over 50 sequential requests through the container: p50 6.7 ms, p95 8.8 ms. 53 predictions logged to Postgres, each with 20 raw cycles (all 26 columns, operating settings included), 99 features, output, threshold, and model version. With the database stopped, `/health` returns 503 and `/predict` returns 500 rather than an unlogged prediction, then recovers 2 s after the database restarts. The blob sink was exercised separately against the real `predictions` container (test blobs since deleted).
 
 ---
 

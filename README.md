@@ -103,12 +103,14 @@ Measured 2026-09-02 on FD001. Models train on 80 engines and are scored on 20 he
 
 The baseline won. On 20-cycle rolling features, FD001's degradation is close to linear, and fifty tuned trials could not beat a scaled logistic regression on engines it had never seen. Version 1 in the workspace registry is therefore the baseline, chosen by held-out ROC-AUC. Every run records the DVC hash of the data it trained on and the git commit. Phase 5's challenger-vs-champion check re-runs this comparison once the replayed regime exists.
 
+**Local container** (measured 2026-09-03, Apple Silicon, `docker compose up`): image builds in 22 s, healthy 2 s after start, and 50 sequential `/predict` calls run at p50 6.7 ms and p95 8.8 ms end to end. Every prediction is written to the log sink before the response returns; with the sink stopped, `/predict` returns 500 rather than an unlogged result. Cloud deployment numbers land in Phase 4.
+
 ## Still To Report
 
 - Drift caught on the FD002/FD004 regime replay: which Evidently metrics fired, and at what values.
 - Retrain loop: time from drift dispatch to a newly registered model version.
 - CI/CD deploy time from merge to live endpoint.
-- Endpoint latency (p50/p95) and idle cost of the persistent demo (target: $0 at zero replicas).
+- Deployed endpoint latency (p50/p95) and idle cost of the persistent demo (target: $0 at zero replicas).
 
 ## Build Log
 
@@ -137,7 +139,11 @@ drift-watch/
 │   ├── tune.py             # Optuna over XGBoost, grouped CV inside the training engines
 │   └── register.py         # promote the best run to the workspace registry
 ├── serving/
-│   ├── app.py              # FastAPI scoring endpoint
+│   ├── app.py              # FastAPI: /predict, /health, /model
+│   ├── schemas.py          # request/response shapes generated from data/schema.py
+│   ├── model.py            # load the baked model, score one window
+│   ├── sinks.py            # prediction log: Postgres locally, Blob JSONL on Azure
+│   ├── fetch_model.py      # build-time pull of the registered model
 │   └── Dockerfile
 ├── monitoring/
 │   ├── drift.py            # Evidently drift + performance checks
@@ -171,9 +177,12 @@ python -m training.train --model logreg
 python -m training.tune --trials 50
 python -m training.register --metric roc_auc
 
-# 4. Serve locally
-docker build -t drift-watch serving/
-docker run -p 8000:8000 drift-watch
+# 4. Serve locally (API + Postgres prediction log)
+python -m serving.fetch_model          # registry -> serving/model/, baked in at build time
+docker compose up --build
+curl -f localhost:8000/health
+curl -fs -X POST localhost:8000/predict -H 'Content-Type: application/json' \
+     -d @serving/examples/near_failure.json
 
 # 5. Replay the held-out regime and run drift monitoring
 python monitoring/drift.py --reference data/ref.parquet --current data/live_fd002.parquet
