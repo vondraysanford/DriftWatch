@@ -121,10 +121,20 @@ The 32.7-second cold start is the price of the zero-idle-cost design, not a numb
 
 **Managed online endpoint, demonstrated and torn down** (`managed-endpoint-demo.yml`, manual only): the registered model deployed to an Azure ML managed online endpoint with our own scoring script, so it takes the same raw cycles as the Container App. Run #4 went green in 18m 29s: endpoint up in 1m 6s, environment built and deployment live in 9m 25s, five invocations answered correctly (1.0000 / label 1 for the near-failure window, 0.0352 / label 0 for the healthy one, identical to the Container App; the run fails on a wrong label), logs captured, then teardown confirmed with nothing left billing. Round trips were 2.9 to 3.3 s, timed around the `az ml online-endpoint invoke` CLI call, which is dominated by CLI start-up and token acquisition: the same scoring script answers in about 10 ms locally, and the server-side figure was not isolated in this run. It never runs on merge, because it bills per instance-hour with no scale-to-zero. Evidence: [docs/evidence](docs/evidence/README.md).
 
+**Drift, caught on real data** (measured 2026-09-04). The quarantined FD002 regime, six operating conditions where FD001 has one, was replayed through the live endpoint as production traffic: 24 held-out engines, a 20-cycle window every fifth cycle, 889 requests, zero failures. A control replay of 20 held-out FD001 engines (781 requests) went through the same endpoint. The detector compares the prediction log, per regime, against the champion's training engines for that regime, using Evidently (per-column normed Wasserstein distance, cut at 0.2 reference standard deviations; drift declared at 30% of raw input columns or any operating setting). A regime the champion never trained on is compared against everything it did train on, which is exactly when drift should be declared.
+
+| Traffic through the live endpoint | Raw input columns drifted | Features drifted | Operating settings | Champion ROC-AUC on it |
+|---|---|---|---|---|
+| FD001, 20 held-out engines | 0 of 17 | 0 of 99 | unchanged | 0.9921 |
+| FD002, 24 held-out engines | 17 of 17 | 98 of 99 | all three drifted; `setting_1` 10,911 SD from baseline | **0.5007** |
+
+On the new regime the champion is a coin flip that flags every window as failing (recall 1.00, precision 0.16). Six sensors that are constant in FD001 started varying. The model's own inputs say the world changed, and the labels, derivable because every replayed engine runs to failure, confirm the damage. The detector refuses to issue a verdict on fewer than 200 predictions from 5 engines; its first negative control, 25 repeats of two windows, showed why.
+
+**Retraining answers it.** On the mixed held-out bench (20 FD001 plus 52 FD002 engines, never trained on), champion v1 scores 0.5463 overall: 0.9923 on the FD001 part, 0.5003 on the FD002 part. A logistic regression retrained on FD001 plus the FD002 training split scores 0.9875 overall, 0.9846 on FD001 and 0.9887 on FD002. The regime is recovered at a cost of 0.008 on the original one.
+
 ## Still To Report
 
-- Drift caught on the FD002/FD004 regime replay: which Evidently metrics fired, and at what values.
-- Retrain loop: time from drift dispatch to a newly registered model version.
+- The automated loop end to end: dispatch → retrain → challenge → register → human-approved promotion, with the time from drift verdict to approved deploy.
 - CI/CD deploy time from merge to live endpoint, and the managed endpoint's server-side latency (the demonstration timed only the CLI round trip).
 
 ## Build Log
@@ -150,9 +160,11 @@ drift-watch/
 ├── notebooks/              # exploration only, never a pipeline stage
 ├── training/
 │   ├── common.py           # config from env, data, models, metrics, plots, lineage tags
-│   ├── train.py            # baseline or given params → MLflow run in the Azure ML workspace
+│   ├── train.py            # baseline or given params → MLflow run (--with-regime for the retrain)
 │   ├── tune.py             # Optuna over XGBoost, grouped CV inside the training engines
-│   └── register.py         # promote the best run to the workspace registry
+│   ├── register.py         # register a run as a challenger version, tagged with its lineage
+│   ├── challenge.py        # champion vs challenger on the mixed held-out bench; register on a win
+│   └── promote.py          # move the champion tag; the one human-approved step
 ├── serving/
 │   ├── app.py              # FastAPI: /predict, /health, /model
 │   ├── schemas.py          # request/response shapes generated from data/schema.py
@@ -161,16 +173,19 @@ drift-watch/
 │   ├── fetch_model.py      # build-time pull of the registered model
 │   └── Dockerfile
 ├── monitoring/
-│   ├── drift.py            # Evidently drift + performance checks
-│   └── retrain_trigger.py  # threshold → repository_dispatch
+│   ├── logs.py             # read the prediction log back (Blob, Postgres, or local JSONL)
+│   ├── replay.py           # send the quarantined regime through the live endpoint as traffic
+│   ├── drift.py            # Evidently reference-vs-current, verdict, performance on labeled traffic
+│   └── retrain_trigger.py  # verdict → repository_dispatch (fine-grained PAT, a GitHub credential)
 ├── dashboard/              # React drift/performance UI
 ├── infra/                  # Bicep: resource group, ML workspace, ACR, budget alert
 ├── scripts/
 │   └── sanity_check.py     # feature contract + request validation, no data or cloud needed
 ├── .github/workflows/
-│   ├── deploy.yml          # CI/CD: test, build, push, deploy (OIDC)
+│   ├── deploy.yml          # CI/CD: test, build, push, deploy (OIDC); promotions wait for a reviewer
 │   ├── managed-endpoint-demo.yml  # manual only: stand up, prove, tear down
-│   └── retrain.yml         # dispatch-triggered retrain → evaluate → register
+│   ├── drift.yml           # every 6 h: read the log, run Evidently, dispatch on drift
+│   └── retrain.yml         # on dispatch: train on FD001 + regime, challenge the champion, register
 ├── dvc.yaml                # pipeline stages
 ├── .env.example            # MLflow URI, experiment, and registry name (no secrets, never hardcoded)
 ├── requirements.txt

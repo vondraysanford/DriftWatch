@@ -2,3 +2,6 @@
 /holdout_official.parquet
 /train.parquet
 /test.parquet
+/fd002_features.parquet
+/fd002_train.parquet
+/fd002_test.parquet

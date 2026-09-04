@@ -45,10 +45,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--trials", type=int, default=50)
     parser.add_argument("--out", type=Path, default=Path("training/best_params.json"),
                         help="where to write the best settings (also logged as a run artifact)")
+    parser.add_argument("--with-regime", action="store_true",
+                        help="tune and train on FD001 plus the replayed FD002 regime (the retrain loop)")
     args = parser.parse_args(argv)
 
     experiment = configure_mlflow()
-    tables = load_tables()
+    tables = load_tables(with_regime=args.with_regime)
+    data_tag = "fd001+fd002" if args.with_regime else "fd001"
+    parent_name = "xgboost-tuned-mixed" if args.with_regime else "xgboost-tuned"
+    if args.with_regime and args.out == Path("training/best_params.json"):
+        args.out = Path("training/best_params_mixed.json")
     X, y, groups = split_xy(tables["train"])
     folds = list(GroupKFold(n_splits=N_FOLDS).split(X, y, groups))
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -67,7 +73,7 @@ def main(argv: list[str] | None = None) -> None:
         return mean_auc
 
     log.info("experiment %r: %d trials, %d-fold grouped CV over %d engines", experiment, args.trials, N_FOLDS, groups.nunique())
-    with mlflow.start_run(run_name="xgboost-tuned"):
+    with mlflow.start_run(run_name=parent_name):
         study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED))
         study.optimize(objective, n_trials=args.trials)
         best = study.best_params
@@ -78,7 +84,7 @@ def main(argv: list[str] | None = None) -> None:
         mlflow.log_dict(best, "best_params.json")
         args.out.write_text(json.dumps(best, indent=2) + "\n")
 
-        fit_evaluate_log("xgboost", best, tables, run_name="xgboost-tuned", tags={"stage": "tuned"})
+        fit_evaluate_log("xgboost", best, tables, run_name=parent_name, tags={"stage": "tuned", "data": data_tag})
 
 
 if __name__ == "__main__":

@@ -19,7 +19,9 @@ from pathlib import Path
 
 import mlflow
 from mlflow.models import infer_signature
+from sklearn.metrics import roc_auc_score
 
+from data.schema import regime_of
 from training.common import (
     MODEL_KINDS,
     choose_threshold,
@@ -66,10 +68,16 @@ def fit_evaluate_log(kind: str, params: dict, tables: dict, run_name: str, tags:
         })
         metrics = {f"cv_{k}": v for k, v in evaluate(y, oof, threshold).items()}
         for name in EVAL_SETS:
-            X_eval, y_eval, _ = split_xy(tables[name])
+            X_eval, y_eval, units_eval = split_xy(tables[name])
             proba = model.predict_proba(X_eval)[:, 1]
             metrics.update({f"{name}_{k}": v for k, v in evaluate(y_eval, proba, threshold).items()})
             log_plots(y_eval, proba, threshold, name)
+            regimes = units_eval.map(regime_of)
+            if regimes.nunique() > 1:  # mixed bench: also score each regime on its own
+                for regime in sorted(regimes.unique()):
+                    mask = (regimes == regime).to_numpy()
+                    if y_eval[mask].nunique() == 2:
+                        metrics[f"{name}_{regime}_roc_auc"] = float(roc_auc_score(y_eval[mask], proba[mask]))
         mlflow.log_metrics(metrics)
 
         signature = infer_signature(X.head(), model.predict(X.head()))
@@ -88,15 +96,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--model", choices=MODEL_KINDS, required=True)
     parser.add_argument("--params", type=Path, help="JSON file of model settings (default: built-in defaults)")
     parser.add_argument("--run-name", help="MLflow run name (default: <model>-baseline or <model>-default)")
+    parser.add_argument("--with-regime", action="store_true",
+                        help="train and test on FD001 plus the replayed FD002 regime (the retrain loop)")
     args = parser.parse_args(argv)
 
     params = json.loads(args.params.read_text()) if args.params else DEFAULT_PARAMS[args.model]
     run_name = args.run_name or (f"{args.model}-baseline" if args.model == "logreg" else f"{args.model}-default")
+    if args.with_regime and not args.run_name:
+        run_name += "-mixed"
     stage = "baseline" if args.model == "logreg" else ("from-params" if args.params else "default")
+    data_tag = "fd001+fd002" if args.with_regime else "fd001"
 
     experiment = configure_mlflow()
-    log.info("experiment %r, model %s, params %s", experiment, args.model, params)
-    fit_evaluate_log(args.model, params, load_tables(), run_name, tags={"stage": stage})
+    log.info("experiment %r, model %s, data %s, params %s", experiment, args.model, data_tag, params)
+    fit_evaluate_log(args.model, params, load_tables(with_regime=args.with_regime), run_name, tags={"stage": stage, "data": data_tag})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+# Scheduled drift job only: read the prediction log, run Evidently, pull the reference via DVC.
+# Same pins as the root requirements.txt; no training or serving stack.
+evidently==0.7.21
+pandas==2.3.3
+numpy==2.4.6
+pyarrow==24.0.0
+scikit-learn==1.9.0
+azure-storage-blob==12.27.1
+azure-identity==1.25.3
+dvc[azure]==3.67.1

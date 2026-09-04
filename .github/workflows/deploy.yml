@@ -14,6 +14,15 @@ on:
       - 'notebooks/**'
       - 'docs/**'   # evidence screenshots and recordings; never a reason to redeploy
   workflow_dispatch:
+    inputs:
+      promote_version:
+        description: 'Registry version to promote to champion before deploying (blank = deploy the current champion)'
+        required: false
+        default: ''
+  # retrain.yml sends this after registering a winning challenger. The deploy job then runs in
+  # the `production` environment, which requires a reviewer, so promotion is a human decision.
+  repository_dispatch:
+    types: [model-registered]
 
 permissions:
   id-token: write   # required for OIDC; this is what replaces a stored credential
@@ -25,6 +34,8 @@ concurrency:
 
 env:
   IMAGE_REPOSITORY: driftwatch
+  # Set only by a promotion request; empty on ordinary pushes, which deploy the current champion.
+  PROMOTE_VERSION: ${{ github.event.client_payload.version || inputs.promote_version || '' }}
 
 jobs:
   test:
@@ -44,6 +55,9 @@ jobs:
     name: build, push, deploy
     needs: test
     runs-on: ubuntu-latest
+    # A promotion runs in `production`, whose required reviewer must approve before the job starts.
+    # Ordinary code pushes run in `ci`, which has no protection rules, so they are not gated.
+    environment: ${{ (github.event.client_payload.version || inputs.promote_version) && 'production' || 'ci' }}
     outputs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
@@ -59,20 +73,28 @@ jobs:
         with:
           python-version: '3.11'
 
-      # The image must contain the model, so the registry pull happens before the build
-      # (decision 11). The runner authenticates with the same federated credential.
-      - name: Pull the registered model into the build context
-        env:
-          DRIFTWATCH_MODEL_NAME: ${{ vars.DRIFTWATCH_MODEL_NAME }}
+      - name: Point at the workspace
         run: |
           az extension add --name ml --yes --only-show-errors
-          MLFLOW_TRACKING_URI=$(az ml workspace show \
-            --name "${{ vars.AZURE_ML_WORKSPACE }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query mlflow_tracking_uri -o tsv)
-          echo "::add-mask::$MLFLOW_TRACKING_URI"
-          export MLFLOW_TRACKING_URI
+          URI=$(az ml workspace show --name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query mlflow_tracking_uri -o tsv)
+          echo "::add-mask::$URI"
+          echo "MLFLOW_TRACKING_URI=$URI" >> "$GITHUB_ENV"
+          echo "DRIFTWATCH_MODEL_NAME=${{ vars.DRIFTWATCH_MODEL_NAME }}" >> "$GITHUB_ENV"
           pip install -r requirements.txt
+
+      # Only on a promotion request. By the time this runs, the `production` environment's
+      # reviewer has approved. Registering a version never changes what ships; this step does.
+      - name: Promote the requested version to champion
+        if: env.PROMOTE_VERSION != ''
+        run: |
+          python -m training.promote --version "$PROMOTE_VERSION"
+          python -m training.promote --show
+
+      # The image must contain the model, so the registry pull happens before the build
+      # (decision 11). fetch_model follows the champion tag, nothing else.
+      - name: Pull the champion model into the build context
+        run: |
           python -m serving.fetch_model
           echo "MODEL_VERSION=$(python -c "import json;print(json.load(open('serving/model/model_info.json'))['version'])")" >> "$GITHUB_ENV"
 
@@ -143,4 +165,5 @@ jobs:
             echo "| Endpoint | ${{ steps.deploy.outputs.url }} |"
             echo "| Image tag | \`${{ github.sha }}\` |"
             echo "| Model version | ${MODEL_VERSION:-unknown} |"
+            echo "| Promotion | ${PROMOTE_VERSION:-none (deployed the current champion)} |"
           } >> "$GITHUB_STEP_SUMMARY"

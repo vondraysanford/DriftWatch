@@ -1,7 +1,10 @@
 """Build-time pull of the registered model into serving/model/ (gitignored).
 
-    python -m serving.fetch_model                 # latest version of DRIFTWATCH_MODEL_NAME
-    python -m serving.fetch_model --version 1
+    python -m serving.fetch_model                 # the version tagged stage=champion
+    python -m serving.fetch_model --version 1     # an explicit version, for experiments
+
+The champion tag is the only thing that decides what serves. Registering a new version (a
+challenger from the retrain loop) never changes it; training.promote does, after a human approves.
 
 Runs before ``docker build`` (locally with az login, in CI after azure/login via OIDC). The image
 copies the directory, so the container never touches the registry and needs no credential to
@@ -48,11 +51,16 @@ SERVING_REQUIREMENTS = Path("serving/requirements.txt")
 MODEL_LIBRARIES = ("scikit-learn", "xgboost", "lightgbm")
 
 
-def latest_version(client: MlflowClient, name: str) -> str:
+def champion_version(client: MlflowClient, name: str) -> str:
+    """The single version tagged stage=champion. Anything else is a registered-but-not-serving version."""
     versions = client.search_model_versions(f"name='{name}'")
     if not versions:
         raise SystemExit(f"no versions registered under {name!r}")
-    return str(max(int(v.version) for v in versions))
+    champions = [str(v.version) for v in versions if v.tags.get("stage") == "champion"]
+    if len(champions) != 1:
+        raise SystemExit(f"expected exactly one version of {name!r} tagged stage=champion, found {champions}; "
+                         "run `python -m training.promote --version <n>`")
+    return champions[0]
 
 
 def check_image_can_load(model_dir: Path) -> None:
@@ -68,14 +76,14 @@ def check_image_can_load(model_dir: Path) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--version", help="registry version (default: highest version number)")
+    parser.add_argument("--version", help="registry version (default: the one tagged stage=champion)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
 
     mlflow.set_tracking_uri(require_env("MLFLOW_TRACKING_URI"))
     name = require_env("DRIFTWATCH_MODEL_NAME")
     client = MlflowClient()
-    version = args.version or latest_version(client, name)
+    version = args.version or champion_version(client, name)
     mv = client.get_model_version(name, version)
     run = client.get_run(mv.run_id)
 

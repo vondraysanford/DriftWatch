@@ -50,6 +50,9 @@ SEED = 42
 N_FOLDS = 5
 PROCESSED_DIR = Path("data/processed")
 TABLES = {"train": "train.parquet", "test": "test.parquet", "holdout": "holdout_official.parquet"}
+# The replayed regime (FD002, units offset by 1000), split by engine unit like FD001. Retraining
+# concatenates these onto the FD001 tables; the mixed test set is the champion-vs-challenger bench.
+REGIME_TABLES = {"train": "fd002_train.parquet", "test": "fd002_test.parquet"}
 MODEL_KINDS = ("logreg", "xgboost")
 
 
@@ -80,8 +83,13 @@ def configure_mlflow() -> str:
     return experiment
 
 
-def load_tables() -> dict[str, pd.DataFrame]:
-    return {name: pd.read_parquet(PROCESSED_DIR / file) for name, file in TABLES.items()}
+def load_tables(with_regime: bool = False) -> dict[str, pd.DataFrame]:
+    """FD001 tables, optionally with the replayed regime concatenated onto train and test."""
+    tables = {name: pd.read_parquet(PROCESSED_DIR / file) for name, file in TABLES.items()}
+    if with_regime:
+        for name, file in REGIME_TABLES.items():
+            tables[name] = pd.concat([tables[name], pd.read_parquet(PROCESSED_DIR / file)], ignore_index=True)
+    return tables
 
 
 def split_xy(table: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series]:

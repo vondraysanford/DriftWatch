@@ -55,3 +55,42 @@ stages:
     outs:
       - data/processed/train.parquet
       - data/processed/test.parquet
+
+  # Phase 5 opens the quarantined regime on purpose (decision 1). FD002's six operating
+  # conditions are the "production" traffic that has to make the drift detector fire, and the
+  # retrain trains on FD001 plus this regime. `--replay` lifts the guard loudly and offsets the
+  # unit numbers by 1000 (1001..1260), so the regime is unambiguous in every table and in the
+  # prediction log. The sensor drop rule is NOT re-verified here: it is the model's fixed
+  # contract, defined on FD001. FD004 stays untouched.
+  ingest_regime:
+    cmd: python -m data.ingest --subset FD002 --kind train --replay --out data/interim/fd002_train.parquet
+    deps:
+      - data/raw/train_FD002.txt
+      - data/ingest.py
+      - data/schema.py
+    outs:
+      - data/interim/fd002_train.parquet
+
+  features_regime:
+    cmd: >-
+      python -m data.features --input data/interim/fd002_train.parquet
+      --output data/processed/fd002_features.parquet
+    deps:
+      - data/interim/fd002_train.parquet
+      - data/features.py
+      - data/schema.py
+    outs:
+      - data/processed/fd002_features.parquet
+
+  split_regime:
+    cmd: >-
+      python -m data.split --input data/processed/fd002_features.parquet
+      --train-out data/processed/fd002_train.parquet --test-out data/processed/fd002_test.parquet
+      --test-fraction 0.2 --seed 42
+    deps:
+      - data/processed/fd002_features.parquet
+      - data/split.py
+      - data/schema.py
+    outs:
+      - data/processed/fd002_train.parquet
+      - data/processed/fd002_test.parquet

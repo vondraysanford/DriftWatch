@@ -6,16 +6,16 @@ stages:
     deps:
     - path: data/ingest.py
       hash: md5
-      md5: f7a119db2421991738f4050a15426cb2
-      size: 4711
+      md5: e63ba15954a53e0a913b29789f5839d3
+      size: 5432
     - path: data/raw/train_FD001.txt
       hash: md5
       md5: 259f340bac32ce6fa8894815600fa757
       size: 3515356
     - path: data/schema.py
       hash: md5
-      md5: 2e62dc9b0ed28a8406496115b52bf343
-      size: 715
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
     outs:
     - path: data/interim/fd001_train.parquet
       hash: md5
@@ -27,8 +27,8 @@ stages:
     deps:
     - path: data/ingest.py
       hash: md5
-      md5: f7a119db2421991738f4050a15426cb2
-      size: 4711
+      md5: e63ba15954a53e0a913b29789f5839d3
+      size: 5432
     - path: data/raw/RUL_FD001.txt
       hash: md5
       md5: 8f4a8b3d2692b2f7d8e72b344927bf4b
@@ -39,8 +39,8 @@ stages:
       size: 2228855
     - path: data/schema.py
       hash: md5
-      md5: 2e62dc9b0ed28a8406496115b52bf343
-      size: 715
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
     outs:
     - path: data/interim/fd001_test.parquet
       hash: md5
@@ -60,8 +60,8 @@ stages:
       size: 533926
     - path: data/schema.py
       hash: md5
-      md5: 2e62dc9b0ed28a8406496115b52bf343
-      size: 715
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
     outs:
     - path: data/processed/fd001_features.parquet
       hash: md5
@@ -81,8 +81,8 @@ stages:
       size: 350253
     - path: data/schema.py
       hash: md5
-      md5: 2e62dc9b0ed28a8406496115b52bf343
-      size: 715
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
     outs:
     - path: data/processed/holdout_official.parquet
       hash: md5
@@ -99,8 +99,8 @@ stages:
       size: 5386817
     - path: data/schema.py
       hash: md5
-      md5: 2e62dc9b0ed28a8406496115b52bf343
-      size: 715
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
     - path: data/split.py
       hash: md5
       md5: a37f1f6638a768b6248c94b9a1bb0402
@@ -114,3 +114,71 @@ stages:
       hash: md5
       md5: ea34a561feba675d8c0dea6088b49d5b
       size: 4349878
+  ingest_regime:
+    cmd: python -m data.ingest --subset FD002 --kind train --replay --out 
+      data/interim/fd002_train.parquet
+    deps:
+    - path: data/ingest.py
+      hash: md5
+      md5: e63ba15954a53e0a913b29789f5839d3
+      size: 5432
+    - path: data/raw/train_FD002.txt
+      hash: md5
+      md5: b6eaab2a6b589e5e41d43ca2f99e379b
+      size: 9082480
+    - path: data/schema.py
+      hash: md5
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
+    outs:
+    - path: data/interim/fd002_train.parquet
+      hash: md5
+      md5: d479990753fd8214c7d3e3fcd97af78d
+      size: 1870444
+  features_regime:
+    cmd: python -m data.features --input data/interim/fd002_train.parquet 
+      --output data/processed/fd002_features.parquet
+    deps:
+    - path: data/features.py
+      hash: md5
+      md5: de214843853d9f3bbc4ed413d019168d
+      size: 5601
+    - path: data/interim/fd002_train.parquet
+      hash: md5
+      md5: d479990753fd8214c7d3e3fcd97af78d
+      size: 1870444
+    - path: data/schema.py
+      hash: md5
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
+    outs:
+    - path: data/processed/fd002_features.parquet
+      hash: md5
+      md5: ae15b51eb4dcde7ca33fd58cc0ba3529
+      size: 18193924
+  split_regime:
+    cmd: python -m data.split --input data/processed/fd002_features.parquet 
+      --train-out data/processed/fd002_train.parquet --test-out 
+      data/processed/fd002_test.parquet --test-fraction 0.2 --seed 42
+    deps:
+    - path: data/processed/fd002_features.parquet
+      hash: md5
+      md5: ae15b51eb4dcde7ca33fd58cc0ba3529
+      size: 18193924
+    - path: data/schema.py
+      hash: md5
+      md5: e408f6c69cc6ac64d4de15ac9329aa73
+      size: 1096
+    - path: data/split.py
+      hash: md5
+      md5: a37f1f6638a768b6248c94b9a1bb0402
+      size: 2740
+    outs:
+    - path: data/processed/fd002_test.parquet
+      hash: md5
+      md5: 74e0343595e0d4b07121a0474ca6c590
+      size: 4102912
+    - path: data/processed/fd002_train.parquet
+      hash: md5
+      md5: f9a523d297960ba63d0dd0cb1593c84e
+      size: 14930413

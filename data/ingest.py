@@ -9,8 +9,10 @@ Training engines run to failure, so RUL is the distance to each engine's last cy
 are cut off early and the RUL file gives the true remaining life at the cut, so RUL at every
 earlier cycle is that value plus the distance to the cut.
 
-Only FD001 is allowed here. FD002 and FD004 are quarantined as production replay traffic for the
-drift phase, and FD003 is unused. The guard is deliberate; Phase 5 widens it on purpose.
+Only FD001 is allowed by default. FD002 and FD004 are quarantined as production replay traffic for
+the drift phase, and FD003 is unused. Phase 5 lifts the quarantine on purpose with ``--replay``,
+which also offsets the unit numbers by REPLAY_UNIT_OFFSET so the regime is unambiguous everywhere
+downstream. Nothing lifts it silently.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from data.schema import CYCLE, RAW_COLUMNS, RUL, UNIT
+from data.schema import CYCLE, RAW_COLUMNS, REPLAY_UNIT_OFFSET, RUL, UNIT
 
 log = logging.getLogger("driftwatch.ingest")
 
@@ -30,12 +32,15 @@ QUARANTINED_SUBSETS: tuple[str, ...] = ("FD002", "FD004")
 DEFAULT_RAW_DIR = Path("data/raw")
 
 
-def guard_subset(subset: str) -> None:
-    """Refuse anything but the training subset until the drift phase opens the replay data."""
+def guard_subset(subset: str, replay: bool = False) -> None:
+    """Refuse the quarantined subsets unless the caller says, explicitly, that this is the replay."""
     if subset in ALLOWED_SUBSETS:
         return
     if subset in QUARANTINED_SUBSETS:
-        raise SystemExit(f"{subset} is quarantined as production replay traffic until Phase 5; refusing to read it")
+        if replay:
+            log.warning("%s quarantine lifted for the drift replay; unit numbers will be offset by %d", subset, REPLAY_UNIT_OFFSET)
+            return
+        raise SystemExit(f"{subset} is quarantined as production replay traffic; pass --replay only for the drift phase")
     raise SystemExit(f"{subset!r} is not part of the pipeline; allowed subsets: {', '.join(ALLOWED_SUBSETS)}")
 
 
@@ -79,13 +84,14 @@ def add_rul_test(df: pd.DataFrame, rul_path: Path) -> pd.DataFrame:
     return df
 
 
-def ingest(subset: str, kind: str, raw_dir: Path) -> pd.DataFrame:
-    guard_subset(subset)
+def ingest(subset: str, kind: str, raw_dir: Path, replay: bool = False) -> pd.DataFrame:
+    guard_subset(subset, replay)
     df = read_cycles(raw_dir / f"{kind}_{subset}.txt")
     validate(df)
-    if kind == "train":
-        return add_rul_train(df)
-    return add_rul_test(df, raw_dir / f"RUL_{subset}.txt")
+    df = add_rul_train(df) if kind == "train" else add_rul_test(df, raw_dir / f"RUL_{subset}.txt")
+    if replay:
+        df[UNIT] = (df[UNIT] + REPLAY_UNIT_OFFSET).astype("int32")  # after RUL, which maps by original unit
+    return df
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -94,9 +100,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--kind", choices=("train", "test"), default="train")
     parser.add_argument("--raw-dir", type=Path, default=DEFAULT_RAW_DIR)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--replay", action="store_true",
+                        help="lift the quarantine on FD002/FD004 for the drift replay (Phase 5) and offset unit numbers")
     args = parser.parse_args(argv)
 
-    df = ingest(args.subset, args.kind, args.raw_dir)
+    df = ingest(args.subset, args.kind, args.raw_dir, replay=args.replay)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(args.out, index=False)
     log.info(
