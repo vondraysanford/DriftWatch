@@ -82,7 +82,9 @@ jobs:
         id: challenge
         run: |
           MARGIN="${{ inputs.margin }}"; MARGIN="${MARGIN:-0.005}"
-          python -m training.challenge --margin "$MARGIN" --out monitoring/out/challenge.json | tee challenge.md
+          # Only this run's own challengers are eligible (same short SHA the training runs were tagged with).
+          python -m training.challenge --margin "$MARGIN" --commit "$(git rev-parse --short HEAD)" \
+            --out monitoring/out/challenge.json | tee challenge.md
           cat challenge.md >> "$GITHUB_STEP_SUMMARY"
           echo "version=$(python -c "import json;print(json.load(open('monitoring/out/challenge.json'))['registered_version'] or '')")" >> "$GITHUB_OUTPUT"
 

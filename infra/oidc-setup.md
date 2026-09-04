@@ -71,6 +71,23 @@ az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
 Both credentials are kept. An app may hold several, only one has to match, and keeping the
 name-based one costs nothing if GitHub ever issues that form instead.
 
+### Jobs in a GitHub Environment present a different subject again
+
+When a job declares `environment:`, GitHub replaces the branch in the subject with the
+environment name. `deploy.yml` runs ordinary pushes in `ci` and promotions in `production`, so
+its jobs present:
+
+```
+repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:ci
+repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:production
+```
+
+Each needs its own federated credential (`github-environment-ci`, `github-environment-production`,
+same issuer and audience). Jobs without an `environment:` (drift, retrain, the managed-endpoint
+demo) keep presenting the branch subject. Rule of thumb: one credential per distinct subject the
+workflows can present, and the failing run's `Federated token details` block tells you exactly
+which one is missing.
+
 ## 3. RBAC, scoped per resource rather than per subscription
 
 `Contributor` on the resource group covers the control plane (deploying the Container Apps

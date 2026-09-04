@@ -36,6 +36,8 @@ env:
   IMAGE_REPOSITORY: driftwatch
   # Set only by a promotion request; empty on ordinary pushes, which deploy the current champion.
   PROMOTE_VERSION: ${{ github.event.client_payload.version || inputs.promote_version || '' }}
+  # Filled in by the "Pull the champion model" step (GITHUB_ENV); part of the image tag afterwards.
+  MODEL_VERSION: ''
 
 jobs:
   test:
@@ -112,8 +114,11 @@ jobs:
           # Container Apps runs amd64. Runners are amd64 too, but stating it keeps an
           # arm64 Mac from pushing an image the platform silently refuses to start.
           platforms: linux/amd64
+          # Tag = commit + model version. A promotion changes the model but not the commit, and
+          # Container Apps only creates a new revision when the image string changes; tagging by
+          # commit alone once left the old model serving after a "successful" promotion deploy.
           tags: |
-            ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}-v${{ env.MODEL_VERSION }}
             ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -127,7 +132,7 @@ jobs:
             --name "driftwatch-app-${{ github.run_number }}" \
             --template-file infra/containerapp.bicep \
             --parameters \
-              image="${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}" \
+              image="${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}-v${{ env.MODEL_VERSION }}" \
               acrName="${{ vars.ACR_NAME }}" \
               storageAccountName="${{ vars.AZURE_STORAGE_ACCOUNT }}" \
             --query properties.outputs.url.value -o tsv)
@@ -147,11 +152,15 @@ jobs:
             -H 'Content-Type: application/json' \
             -d @serving/examples/near_failure.json > /tmp/predict.json
           python - <<'PY'
-          import json
+          import json, os
           p = json.load(open("/tmp/predict.json"))
           print(f"unit={p['unit']} cycle={p['cycle']} probability={p['probability']:.4f} "
                 f"label={p['label']} model={p['model']['name']} v{p['model']['version']}")
           assert p["label"] == 1, "the near-failure example should be flagged"
+          expected = os.environ["MODEL_VERSION"]
+          served = str(p["model"]["version"])
+          assert served == expected, f"endpoint serves model version {served}, expected {expected}: the deploy did not take effect"
+          print(f"live endpoint serves the model this run deployed (version {served})")
           PY
 
       - name: Summary
@@ -163,7 +172,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Endpoint | ${{ steps.deploy.outputs.url }} |"
-            echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Image tag | \`${{ github.sha }}-v${MODEL_VERSION:-?}\` |"
             echo "| Model version | ${MODEL_VERSION:-unknown} |"
             echo "| Promotion | ${PROMOTE_VERSION:-none (deployed the current champion)} |"
           } >> "$GITHUB_STEP_SUMMARY"

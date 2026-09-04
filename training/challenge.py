@@ -49,13 +49,20 @@ def score(model, test: pd.DataFrame) -> dict:
     return result
 
 
-def best_mixed_run(experiment: str):
+def best_mixed_run(experiment: str, commit: str | None = None):
+    """Best finished mixed-data run by held-out ROC-AUC, optionally only among runs from one commit.
+
+    The retrain workflow passes its own commit so the loop can only promote work it did itself;
+    without that, an older run trained by hand on the same data could be the one registered.
+    """
     runs = mlflow.search_runs(experiment_names=[experiment], output_format="pandas")
     if runs.empty or "tags.data" not in runs.columns:
         raise SystemExit(f"no runs in {experiment!r} trained on {MIXED_TAG}; run training.train/tune with --with-regime first")
     candidates = runs[(runs["status"] == "FINISHED") & (runs["tags.data"] == MIXED_TAG) & runs["metrics.test_roc_auc"].notna()]
+    if commit:
+        candidates = candidates[candidates.get("tags.git_commit") == commit]
     if candidates.empty:
-        raise SystemExit(f"no finished runs in {experiment!r} tagged data={MIXED_TAG} with a test_roc_auc")
+        raise SystemExit(f"no finished runs in {experiment!r} tagged data={MIXED_TAG}" + (f" from commit {commit}" if commit else ""))
     return candidates.sort_values("metrics.test_roc_auc", ascending=False).iloc[0]
 
 
@@ -63,6 +70,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--margin", type=float, default=0.005, help="challenger must beat the champion's ROC-AUC by this much")
     parser.add_argument("--dry-run", action="store_true", help="evaluate and report, never register")
+    parser.add_argument("--commit", help="consider only challenger runs tagged with this short git commit (CI passes its own)")
     parser.add_argument("--out", type=Path, default=Path("monitoring/out/challenge.json"))
     args = parser.parse_args(argv)
 
@@ -76,7 +84,7 @@ def main(argv: list[str] | None = None) -> None:
     champion_result = {"version": champ_version, **score(champion, test)}
     log.info("champion v%s on the mixed bench: %s", champ_version, champion_result)
 
-    run = best_mixed_run(experiment)
+    run = best_mixed_run(experiment, args.commit)
     challenger = mlflow.sklearn.load_model(f"{client.get_run(run['run_id']).info.artifact_uri}/model")
     challenger_result = {"run_id": run["run_id"], "run_name": run.get("tags.mlflow.runName", "?"),
                          "model_kind": run.get("tags.model_kind", "?"), **score(challenger, test)}
