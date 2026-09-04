@@ -2,7 +2,7 @@
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
 [![License: MIT](https://img.shields.io/github/license/vondraysanford/DriftWatch)](LICENSE)
-[![Build plan: phase 4 of 6 complete](https://img.shields.io/badge/build_plan-phase_4_of_6_complete-orange)](DriftWatch-Guide.md)
+[![Build plan: phase 5 of 6 complete](https://img.shields.io/badge/build_plan-phase_5_of_6_complete-orange)](DriftWatch-Guide.md)
 [![Last commit](https://img.shields.io/github/last-commit/vondraysanford/DriftWatch)](https://github.com/vondraysanford/DriftWatch/commits/main)
 
 [![Azure ML](https://img.shields.io/badge/Azure_ML-0078D4)](https://azure.microsoft.com/products/machine-learning)
@@ -132,10 +132,19 @@ On the new regime the champion is a coin flip that flags every window as failing
 
 **Retraining answers it.** On the mixed held-out bench (20 FD001 plus 52 FD002 engines, never trained on), champion v1 scores 0.5463 overall: 0.9923 on the FD001 part, 0.5003 on the FD002 part. A logistic regression retrained on FD001 plus the FD002 training split scores 0.9875 overall, 0.9846 on FD001 and 0.9887 on FD002. The regime is recovered at a cost of 0.008 on the original one.
 
+**The loop, closed end to end** (2026-09-04, with a human in exactly one place). The scheduled drift workflow returned DRIFT and fired `repository_dispatch`. The retrain workflow trained a baseline and a 20-trial XGBoost search on FD001 plus the FD002 training split, judged them against the champion on the mixed bench, registered the winner as version 2 tagged `challenger`, and dispatched a promotion request. The deploy workflow paused in the `production` environment until a reviewer approved it ("Promoting to champion"), then tagged version 2 as champion and shipped it. Registering never changes what serves; only that approved promotion does. From drift verdict to registered challenger took about 9 minutes; to a green promotion run, about 16, the approval wait being the largest piece.
+
+| Same 24 held-out FD002 engines through the live endpoint | Before the loop (v1) | After (v2) |
+|---|---|---|
+| ROC-AUC | 0.5007 | **0.9933** |
+| Precision / recall at the operating threshold | 0.164 / 1.000 | 0.918 / 0.849 |
+| Drift verdict, reference following the champion | DRIFT, 17 of 17 raw columns | no drift, 0 of 17 |
+
+Two bugs the first run exposed, both fixed and kept in the record: the image tag was the commit SHA, which a promotion does not change, so Container Apps kept the old revision serving while the deploy reported success (tags are now commit plus model version, and the smoke test asserts the served version); and a mutable tag means a cold start after scale-to-zero can change production with no deploy at all. Merge to live endpoint on an ordinary push: 4m 46s.
+
 ## Still To Report
 
-- The automated loop end to end: dispatch → retrain → challenge → register → human-approved promotion, with the time from drift verdict to approved deploy.
-- CI/CD deploy time from merge to live endpoint, and the managed endpoint's server-side latency (the demonstration timed only the CLI round trip).
+- The managed endpoint's server-side latency (the demonstration timed only the CLI round trip).
 
 ## Build Log
 
