@@ -87,16 +87,17 @@ jobs:
       # No scoring script and no environment: the registered model is in MLflow format, so
       # Azure ML builds the serving container itself. This is the fastest honest path from
       # registry to live endpoint, and it is the point of the demonstration.
+      # `online-deployment create` takes a YAML file (unlike `online-endpoint create`, which
+      # accepts --name). The model reference is injected with --set so the registry name stays
+      # in a repository variable rather than hardcoded in the spec.
       - name: Create the deployment
         run: |
           az ml online-deployment create \
-            --name blue \
+            --file infra/managed-endpoint/deployment.yml \
             --endpoint-name "$ENDPOINT_NAME" \
             --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --model "azureml:${{ vars.DRIFTWATCH_MODEL_NAME }}:${{ steps.model.outputs.version }}" \
-            --instance-type Standard_DS2_v2 \
-            --instance-count 1 \
+            --set model="azureml:${{ vars.DRIFTWATCH_MODEL_NAME }}:${{ steps.model.outputs.version }}" \
             --all-traffic
 
       - name: Invoke it and time the response

@@ -1,0 +1,23 @@
+# Managed online deployment for the Phase 4 demonstration.
+#
+# `az ml online-deployment create` requires a YAML file, unlike `online-endpoint create` which
+# takes --name. The two dynamic values below are placeholders and are ALWAYS overridden on the
+# command line, so a missing override fails loudly instead of quietly deploying the wrong thing:
+#
+#   az ml online-deployment create \
+#     --file infra/managed-endpoint/deployment.yml \
+#     --endpoint-name <endpoint> \
+#     --set model=azureml:<model-name>:<version> \
+#     --all-traffic
+#
+# No scoring script and no environment: the registered model is in MLflow format, so Azure ML
+# builds the serving container itself. That is the point of the demonstration.
+#
+# Reminder: this bills per instance-hour with no scale-to-zero. It exists only inside a workflow
+# that tears it down in the same run (decision 13, and landmine 1).
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name: OVERRIDDEN-ON-THE-COMMAND-LINE
+model: OVERRIDDEN-ON-THE-COMMAND-LINE
+instance_type: Standard_DS2_v2
+instance_count: 1
