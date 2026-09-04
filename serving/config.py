@@ -7,6 +7,9 @@
     PREDICTION_CONTAINER     blob sink: container name (default: predictions)
     PREDICTION_PREFIX        blob sink: path prefix inside the container (default: predictions)
     LOG_LEVEL                default INFO
+    CORS_ALLOW_ORIGINS       comma-separated browser origins allowed to call /api, /model, /health
+                             (the Cloudflare Pages dashboard); empty means same-origin only
+    DASHBOARD_DIR            built dashboard to serve at /dashboard (default: dashboard/dist)
 """
 
 from __future__ import annotations

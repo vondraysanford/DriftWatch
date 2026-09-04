@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -87,6 +88,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(metrics_router)
+
+# The dashboard also lives on Cloudflare Pages at its own subdomain and calls this API directly,
+# so those origins are allowed for the read-only routes. Same-origin (/dashboard) needs nothing.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(CORSMiddleware, allow_origins=_cors_origins, allow_methods=["GET"], allow_headers=["Accept"], max_age=3600)
+
 if DASHBOARD_DIR.is_dir():
     app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_DIR), html=True), name="dashboard")
 

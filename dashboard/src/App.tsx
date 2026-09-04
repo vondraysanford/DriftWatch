@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Performance, type Predictions, type Summary, type Verdict } from './api'
+import { API_BASE, api, type Performance, type Predictions, type Summary, type Verdict } from './api'
 import Card from './components/Card'
 import { DriftChart, VerdictTable } from './components/DriftChart'
 import { HistogramChart, HistogramTable } from './components/HistogramChart'
@@ -29,7 +29,15 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [stale, setStale] = useState(false)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  const [waking, setWaking] = useState(false)
   const inFlight = useRef(false)
+
+  // The API scales to zero; a first load that takes more than a few seconds is a cold start.
+  useEffect(() => {
+    if (data) return
+    const id = window.setTimeout(() => setWaking(true), 3000)
+    return () => window.clearTimeout(id)
+  }, [data])
 
   const load = useCallback(async () => {
     if (inFlight.current) return
@@ -64,12 +72,21 @@ export default function App() {
 
   return (
     <main className="app">
+      <div className="topbar">
+        <a className="logo" href="https://vondraysanford.com/">vondray<span>.sanford</span></a>
+        <nav aria-label="Links">
+          <a href="https://vondraysanford.com/#projects">Portfolio</a>
+          <a href="https://github.com/vondraysanford/DriftWatch" target="_blank" rel="noopener">GitHub</a>
+          <a href={`${API_BASE}/docs`} target="_blank" rel="noopener">API</a>
+        </nav>
+      </div>
+
       <div className="masthead">
         <div>
-          <h1>DriftWatch</h1>
-          <div className="sub">Turbofan failure-within-30-cycles prediction, watched for drift. Every prediction is logged; this page reads the log.</div>
+          <div className="eyebrow">DriftWatch · live monitoring</div>
+          <h1>A model, <em>watched</em> for drift</h1>
+          <p className="sub">Turbofan failure-within-30-cycles prediction on NASA C-MAPSS data. Every prediction is logged with its raw inputs and features; this sheet reads that log and the monitoring feeds the pipeline publishes.</p>
         </div>
-        <a href="/docs">API docs</a>
       </div>
 
       <div className="filters" role="toolbar" aria-label="Filters">
@@ -79,7 +96,15 @@ export default function App() {
             <button key={w.hours} type="button" aria-pressed={hours === w.hours} onClick={() => setHours(w.hours)}>{w.label}</button>
           ))}
         </div>
-        <span className="status">{error ? `error: ${error}` : updatedAt ? `updated ${updatedAt.toLocaleTimeString()}, refreshes every minute` : 'loading…'}</span>
+        <span className={!data && waking && !error ? 'status waking' : 'status'}>
+          {error
+            ? `error: ${error}`
+            : updatedAt
+              ? `updated ${updatedAt.toLocaleTimeString()} · refreshes every minute`
+              : waking
+                ? 'waking the endpoint: it scales to zero, the first load can take about 35 s'
+                : 'loading…'}
+        </span>
       </div>
 
       {error && !data ? <div className="error">{error}</div> : null}
@@ -147,6 +172,11 @@ export default function App() {
           stale={stale}
           chart={<RecentTable rows={data?.predictions.recent ?? []} />}
         />
+      </div>
+
+      <div className="colophon">
+        <span># every number on this sheet is read from the prediction log, never typed in</span>
+        <span>© {new Date().getFullYear()} Vondray Sanford</span>
       </div>
     </main>
   )

@@ -66,6 +66,7 @@ jobs:
           VERSION=$($LIST --query "[?tags.stage=='champion'].version | [0]" -o tsv 2>/dev/null || true)
           echo "auc=${AUC}" >> "$GITHUB_OUTPUT"
           echo "data=${DATA:-fd001}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "champion: version ${VERSION:-?}, trained on ${DATA:-fd001}, test_roc_auc ${AUC:-unknown}"
 
       - name: Run the detector
@@ -75,10 +76,14 @@ jobs:
           SINCE="${{ inputs.since_hours }}"; SINCE="${SINCE:-24}"
           REGIME="${{ inputs.only_regime }}"
           AUC="${{ steps.champion.outputs.auc }}"
+          VERSION="${{ steps.champion.outputs.version }}"
+          # Performance is scored only on the champion's own predictions: a window spanning a
+          # promotion holds two models' predictions, and pooling them once reported 0.62 for a
+          # champion that scored 0.99 (v1's 0.50 and v2's 0.99 averaged).
           python -m monitoring.drift --logs-from blob --since-hours "$SINCE" \
             --reference-set "${{ steps.champion.outputs.data }}" \
             --labels-from data/interim/fd001_train.parquet data/interim/fd002_train.parquet \
-            ${AUC:+--reference-auc "$AUC"} ${REGIME:+--only-regime "$REGIME"} \
+            ${AUC:+--reference-auc "$AUC"} ${VERSION:+--champion-version "$VERSION"} ${REGIME:+--only-regime "$REGIME"} \
             --out monitoring/out
           cat monitoring/out/verdict.md >> "$GITHUB_STEP_SUMMARY"
 

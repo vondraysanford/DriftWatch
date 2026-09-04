@@ -29,6 +29,12 @@ param storageAccountName string
 @description('Blob container for prediction logs')
 param predictionContainerName string = 'predictions'
 
+// The dashboard's Cloudflare Pages home calls this API from the browser, so its origin is allowed
+// for the read-only routes. Set here, like the sibling projects set theirs on their Container
+// Apps, and applied on every deploy; a value set by hand in the portal would not survive one.
+@description('Comma-separated browser origins allowed to call the read-only API. Empty = same-origin only.')
+param corsAllowOrigins string = 'https://driftwatch.vondraysanford.com'
+
 resource environment 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: environmentName
 }
@@ -82,6 +88,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             // DefaultAzureCredential needs to be told which user-assigned identity to use.
             { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
             { name: 'LOG_LEVEL', value: 'INFO' }
+            { name: 'CORS_ALLOW_ORIGINS', value: corsAllowOrigins }
           ]
           probes: [
             {

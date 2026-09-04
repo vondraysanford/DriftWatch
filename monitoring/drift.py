@@ -162,10 +162,24 @@ def analyse_part(regime: str, compared_to: str, reference: tuple[pd.DataFrame, p
     }
 
 
-def performance(outputs: pd.DataFrame, labels_from: list[Path] | None, reference_auc: float | None) -> dict | None:
-    """Join predictions with derivable labels (run-to-failure engines) and score the model on them."""
+def performance(outputs: pd.DataFrame, labels_from: list[Path] | None, reference_auc: float | None,
+                champion_version: str | None = None) -> dict | None:
+    """Join predictions with derivable labels (run-to-failure engines) and score the model on them.
+
+    Only the champion's own predictions are scored when its version is known. A window that
+    spans a promotion holds predictions from two models, and pooling them produced a "champion"
+    ROC-AUC of 0.62 that belonged to neither: v1's 0.50 and v2's 0.99 averaged together.
+    """
     if not labels_from or outputs.empty:
         return None
+    other_versions = 0
+    if champion_version is not None:
+        mask = outputs["model_version"].astype(str) == str(champion_version)
+        other_versions = int((~mask).sum())
+        outputs = outputs[mask]
+        if outputs.empty:
+            return {"labeled_records": 0, "model_version": str(champion_version), "records_other_versions": other_versions,
+                    "note": "no predictions from the champion in the window"}
     frames = []
     for path in labels_from:
         table = pd.read_parquet(path, columns=[UNIT, CYCLE, RUL])
@@ -183,7 +197,9 @@ def performance(outputs: pd.DataFrame, labels_from: list[Path] | None, reference
                 "roc_auc_current": round(float(roc_auc_score(part["label_true"], part["probability"])), 4) if part["label_true"].nunique() == 2 else None,
                 "precision_current": round(float(p), 4), "recall_current": round(float(r), 4), "f1_current": round(float(f), 4)}
 
-    result = {**score(joined), "roc_auc_reference": reference_auc, "by_regime": {}}
+    result = {**score(joined), "roc_auc_reference": reference_auc,
+              "model_version": str(champion_version) if champion_version is not None else "all",
+              "records_other_versions": other_versions, "by_regime": {}}
     for regime, part in joined.groupby(joined[UNIT].map(regime_of)):
         result["by_regime"][regime] = score(part)
     return result
@@ -214,12 +230,15 @@ def to_markdown(verdict: dict) -> str:
         if p.get("constant_in_reference_now_varying"):
             lines += ["", f"{p['regime']}: constant in the reference, varying now: `{'`, `'.join(p['constant_in_reference_now_varying'])}`"]
     if perf and perf.get("roc_auc_current") is not None:
-        lines += ["", "| Model on the current window | ROC-AUC | precision | recall | labeled records |", "|---|---|---|---|---|",
-                  f"| champion, all labeled traffic | {perf['roc_auc_current']:.4f} (reference {perf['roc_auc_reference']}) | "
+        who = f"champion v{perf['model_version']}" if perf.get("model_version", "all") != "all" else "all model versions"
+        lines += ["", f"| {who} on the current window | ROC-AUC | precision | recall | labeled records |", "|---|---|---|---|---|",
+                  f"| all labeled traffic | {perf['roc_auc_current']:.4f} (reference {perf['roc_auc_reference']}) | "
                   f"{perf['precision_current']:.3f} | {perf['recall_current']:.3f} | {perf['labeled_records']} |"]
+        if perf.get("records_other_versions"):
+            lines.append(f"| excluded: predictions by other versions | | | | {perf['records_other_versions']} |")
         for regime, s in perf.get("by_regime", {}).items():
             if s.get("roc_auc_current") is not None:
-                lines.append(f"| champion, {regime} traffic | {s['roc_auc_current']:.4f} | {s['precision_current']:.3f} | {s['recall_current']:.3f} | {s['labeled_records']} |")
+                lines.append(f"| {regime} traffic | {s['roc_auc_current']:.4f} | {s['precision_current']:.3f} | {s['recall_current']:.3f} | {s['labeled_records']} |")
     return "\n".join(lines) + "\n"
 
 
@@ -243,6 +262,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--only-regime", choices=("fd001", "fd002"), help="keep only FD001 (units <= 1000) or replayed FD002 (units > 1000) traffic")
     parser.add_argument("--labels-from", type=Path, nargs="+", help="ingested cycles with RUL (any subset), for performance where labels are derivable")
     parser.add_argument("--reference-auc", type=float, help="the champion's held-out ROC-AUC, for the performance line")
+    parser.add_argument("--champion-version", help="score performance only on predictions made by this model version")
     parser.add_argument("--drift-share", type=float, default=0.3, help="share of drifted raw columns that declares drift")
     parser.add_argument("--column-threshold", type=float, default=0.2,
                         help="per-column normed Wasserstein cut, in reference standard deviations (Evidently default 0.1)")
@@ -318,7 +338,7 @@ def main(argv: list[str] | None = None) -> None:
         "raw": aggregate_raw,
         "settings_drifted": sorted({c for p in judged for c in p["settings_drifted"]}),
         "constant_in_reference_now_varying": sorted({c for p in judged for c in p["constant_in_reference_now_varying"]}),
-        "performance": performance(outputs, args.labels_from, args.reference_auc),
+        "performance": performance(outputs, args.labels_from, args.reference_auc, args.champion_version),
         "parts": parts,
     }
     markdown = to_markdown(verdict)

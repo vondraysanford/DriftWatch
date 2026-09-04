@@ -130,8 +130,12 @@ export interface Performance {
   deployments: Deployment[]
 }
 
+// Empty when the dashboard is served by the API's own container (same origin, /dashboard);
+// the Container App's URL when it is hosted on Cloudflare Pages, like the sibling projects.
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+
 export async function getJSON<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } })
+  const response = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`)
   return response.json() as Promise<T>
 }
