@@ -117,6 +117,25 @@ secrets. Every one is an identifier that appears in `az` output and in resource 
 | `AZURE_STORAGE_ACCOUNT` | ... `properties.outputs.storageAccountName.value` |
 | `DRIFTWATCH_MODEL_NAME` | the registry name from `.env` |
 
+## Resource providers
+
+Managed online endpoints (the Phase 4 demonstration) additionally require
+`Microsoft.PolicyInsights`. Without it, `az ml online-endpoint create` fails with:
+
+```
+(SubscriptionNotRegistered) Resource provider [N/A] isn't registered with Subscription [N/A]
+```
+
+The error does not name the provider, which makes it slower to diagnose than it should be.
+
+```bash
+az provider register --namespace Microsoft.PolicyInsights   # takes about a minute
+az provider show -n Microsoft.PolicyInsights --query registrationState -o tsv
+```
+
+Registration is subscription-wide, additive, and free. `managed-endpoint-demo.yml` checks the
+providers up front so a future failure names the missing one.
+
 ## Teardown
 
 ```bash

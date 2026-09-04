@@ -109,12 +109,15 @@ The baseline won. On 20-cycle rolling features, FD001's degradation is close to 
 
 | | |
 |---|---|
-| Warm request | 12-27 ms |
+| Server-side per request (features + inference + log write) | 12 ms |
+| Round trip from a laptop to eastus2 | p50 93 ms, p95 101 ms |
 | Cold start from zero replicas | 32.7 s |
 | Scale-down after last request | 5 min |
 | Idle cost | $0 (no replica runs) |
 
-The 32.7-second cold start is the price of the zero-idle-cost design, not a number to hide. A minimum of one replica would remove it and cost roughly $30/month.
+The 32.7-second cold start is the price of the zero-idle-cost design, not a number to hide. A minimum of one replica would remove it and cost roughly $30/month. The round-trip figure is mostly network distance, which is why the server-side number is reported separately.
+
+**Pipeline** (`deploy.yml`, OIDC, no stored cloud secrets): a push to `main` runs the feature-contract check, pulls the registered model from the workspace registry, builds and pushes the image, deploys the Bicep template, and smoke-tests the live endpoint, failing the run if the near-failure example is not flagged. A docs-only commit is correctly skipped by `paths-ignore`.
 
 ## Still To Report
 

@@ -46,6 +46,22 @@ jobs:
       - name: Prepare the Azure ML CLI
         run: az extension add --name ml --yes --only-show-errors
 
+      # Managed online endpoints need Microsoft.PolicyInsights. Without it, endpoint creation
+      # fails with `SubscriptionNotRegistered ... Resource provider [N/A]`, which does not say
+      # which provider is missing. Checking here turns that into a message that names it.
+      - name: Check the required resource providers
+        run: |
+          MISSING=""
+          for P in Microsoft.PolicyInsights Microsoft.MachineLearningServices Microsoft.ContainerRegistry; do
+            STATE=$(az provider show -n "$P" --query registrationState -o tsv 2>/dev/null || echo Unknown)
+            echo "$P: $STATE"
+            [ "$STATE" = "Registered" ] || MISSING="$MISSING $P"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Unregistered resource provider(s):$MISSING. Run: az provider register --namespace <name>"
+            exit 1
+          fi
+
       - name: Resolve the model version
         id: model
         run: |
