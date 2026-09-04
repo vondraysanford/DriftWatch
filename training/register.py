@@ -60,6 +60,8 @@ def main(argv: list[str] | None = None) -> None:
         "run_id": run["run_id"],
         "run_name": run_name,
         "model_kind": run.get("tags.model_kind", "?"),
+        # Travels with the version so any deployment can read it (the managed endpoint does).
+        "operating_threshold": run.get("params.operating_threshold", "?"),
         f"{args.split}_{args.metric}": f"{run[column]:.4f}",
         "data_version": run.get("tags.data_version", "?"),
         "git_commit": run.get("tags.git_commit", "?"),

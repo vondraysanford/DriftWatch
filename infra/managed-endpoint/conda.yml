@@ -1,0 +1,18 @@
+# Environment for the managed online endpoint demonstration. Azure builds this image in the
+# workspace (nothing is installed locally). Pins match the versions the model was trained and
+# registered with; azureml-inference-server-http is the HTTP server Azure ML expects to find, at
+# the version Azure's own environment used (see the failed-run log in the guide, Phase 4).
+name: driftwatch-inference
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - azureml-inference-server-http==1.4.1
+      - mlflow-skinny==3.13.0
+      - cloudpickle==3.1.2
+      - numpy==2.4.6
+      - pandas==2.3.3
+      - scikit-learn==1.9.0
+      - scipy==1.17.1

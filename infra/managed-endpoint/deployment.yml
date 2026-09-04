@@ -1,17 +1,19 @@
-# Managed online deployment for the Phase 4 demonstration.
+# Managed online deployment for the Phase 4 demonstration: bring-your-own scoring script and
+# environment. Azure's no-code MLflow path was tried first and its own scoring script crashed on a
+# missing Azure package (the guide, Phase 4, has the log). Owning both halves is the production
+# pattern anyway, and it lets this endpoint take raw cycles exactly like the Container App does.
 #
-# `az ml online-deployment create` requires a YAML file, unlike `online-endpoint create` which
-# takes --name. The two dynamic values below are placeholders and are ALWAYS overridden on the
-# command line, so a missing override fails loudly instead of quietly deploying the wrong thing:
+# `az ml online-deployment create` requires a YAML file. The dynamic values are placeholders and
+# are ALWAYS overridden on the command line, so a missing override fails loudly:
 #
-#   az ml online-deployment create \
-#     --file infra/managed-endpoint/deployment.yml \
+#   az ml online-deployment create --file infra/managed-endpoint/deployment.yml \
 #     --endpoint-name <endpoint> \
 #     --set model=azureml:<model-name>:<version> \
+#     --set environment_variables.OPERATING_THRESHOLD=<from the model version's tags> \
 #     --all-traffic
 #
-# No scoring script and no environment: the registered model is in MLflow format, so Azure ML
-# builds the serving container itself. That is the point of the demonstration.
+# `code` is assembled right before deployment: score.py plus the shared data/ package, so the
+# endpoint computes features with the same code training used. Paths are relative to this file.
 #
 # Reminder: this bills per instance-hour with no scale-to-zero. It exists only inside a workflow
 # that tears it down in the same run (decision 13, and landmine 1).
@@ -19,5 +21,16 @@ $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.sch
 name: blue
 endpoint_name: OVERRIDDEN-ON-THE-COMMAND-LINE
 model: OVERRIDDEN-ON-THE-COMMAND-LINE
-instance_type: Standard_DS2_v2
+code_configuration:
+  code: ./code
+  scoring_script: score.py
+environment:
+  name: driftwatch-inference
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file: ./conda.yml
+environment_variables:
+  OPERATING_THRESHOLD: OVERRIDDEN-ON-THE-COMMAND-LINE
+# Azure warns that DS2_v2 "may be too small"; DS3_v2 (4 vCPU, 14 GB) is its stated minimum for
+# general-purpose endpoints and fits the 6-vCPU DSv2 family quota.
+instance_type: Standard_DS3_v2
 instance_count: 1

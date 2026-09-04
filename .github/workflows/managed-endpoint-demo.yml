@@ -7,9 +7,10 @@
 #
 # It is manual-only on purpose (decision 13): it must never run on merge.
 #
-# Note on what this proves: the managed endpoint serves the registered MLflow model directly, so
-# it takes the 99 computed FEATURES. The persistent Container Apps demo serves the FastAPI app,
-# which takes RAW cycles and computes features itself. Different contracts, same model.
+# Same contract as the persistent Container Apps demo: raw cycles in, probability out, features
+# computed by the same data/features.py training used. Azure's no-code MLflow path was tried
+# first and crashed on a missing Azure package, so the scoring script and environment are ours
+# (infra/managed-endpoint/). The model is still the registered version, mounted by Azure.
 name: managed-endpoint-demo
 
 on:
@@ -73,8 +74,19 @@ jobs:
               --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
               --query "max_by([], &to_number(version)).version" -o tsv)
           fi
+          # The operating threshold travels with the model version as a tag (training.register).
+          THRESHOLD=$(az ml model show \
+            --name "${{ vars.DRIFTWATCH_MODEL_NAME }}" --version "$VERSION" \
+            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "tags.operating_threshold" -o tsv 2>/dev/null)
+          if [ -z "$THRESHOLD" ]; then
+            echo "::error::version $VERSION has no operating_threshold tag; training.register sets it"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Deploying ${{ vars.DRIFTWATCH_MODEL_NAME }} version $VERSION"
+          echo "threshold=$THRESHOLD" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${{ vars.DRIFTWATCH_MODEL_NAME }} version $VERSION (operating threshold $THRESHOLD)"
 
       - name: Create the endpoint
         run: |
@@ -87,9 +99,20 @@ jobs:
       # No scoring script and no environment: the registered model is in MLflow format, so
       # Azure ML builds the serving container itself. This is the fastest honest path from
       # registry to live endpoint, and it is the point of the demonstration.
+      # The code snapshot is score.py plus the shared data/ package, so the endpoint computes
+      # features with exactly the code training used. Assembled here rather than committed.
+      - name: Assemble the scoring code
+        run: |
+          rm -rf infra/managed-endpoint/code
+          mkdir -p infra/managed-endpoint/code/data
+          cp infra/managed-endpoint/score.py infra/managed-endpoint/code/
+          cp data/*.py infra/managed-endpoint/code/data/
+          find infra/managed-endpoint/code -type f | sort
+
       # `online-deployment create` takes a YAML file (unlike `online-endpoint create`, which
-      # accepts --name). The model reference is injected with --set so the registry name stays
-      # in a repository variable rather than hardcoded in the spec.
+      # accepts --name). The model reference and threshold are injected with --set so nothing
+      # deployment-specific is hardcoded in the spec. Azure builds the environment image from
+      # conda.yml in the workspace; the first build takes several minutes, later ones are cached.
       - name: Create the deployment
         run: |
           az ml online-deployment create \
@@ -98,24 +121,51 @@ jobs:
             --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --set model="azureml:${{ vars.DRIFTWATCH_MODEL_NAME }}:${{ steps.model.outputs.version }}" \
+            --set environment_variables.OPERATING_THRESHOLD="${{ steps.model.outputs.threshold }}" \
             --all-traffic
 
+      # The same raw-cycle example bodies the Container App is smoke-tested with. The run fails
+      # if the near-failure window is not flagged or the healthy one is, so a green run means
+      # the endpoint answered correctly, not merely that it answered.
       - name: Invoke it and time the response
         run: |
-          echo "## Managed endpoint demonstration" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          for i in 1 2 3 4 5; do
+          {
+            echo "## Managed endpoint demonstration"
+            echo ""
+            echo "Registered model \`${{ vars.DRIFTWATCH_MODEL_NAME }}\` version ${{ steps.model.outputs.version }} on one \`Standard_DS3_v2\`, threshold ${{ steps.model.outputs.threshold }}."
+            echo ""
+            echo "| # | window | probability | label | round trip |"
+            echo "|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          i=0; FAILED=0
+          for EXAMPLE in near_failure healthy near_failure healthy near_failure; do
+            i=$((i + 1))
             START=$(date +%s%N)
             RESULT=$(az ml online-endpoint invoke \
               --name "$ENDPOINT_NAME" \
               --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
               --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --request-file serving/examples/managed_endpoint_payload.json -o tsv)
+              --request-file "serving/examples/$EXAMPLE.json" -o tsv)
             MS=$(( ($(date +%s%N) - START) / 1000000 ))
-            echo "invocation $i: ${MS}ms, result $RESULT"
-            echo "- invocation $i: ${MS} ms, prediction \`$RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "invocation $i ($EXAMPLE): ${MS} ms -> $RESULT"
+            python3 - "$EXAMPLE" "$MS" "$RESULT" <<'PY' >> "$GITHUB_STEP_SUMMARY" || FAILED=1
+          import json, sys
+          example, ms, raw = sys.argv[1], sys.argv[2], sys.argv[3]
+          d = json.loads(raw)
+          if isinstance(d, str):  # az sometimes double-encodes the response body
+              d = json.loads(d)
+          expected = 1 if example == "near_failure" else 0
+          print(f"| {example} | {d['probability']:.4f} | {d['label']} | {ms} ms |")
+          sys.exit(0 if d["label"] == expected else 1)
+          PY
           done
+          if [ "$FAILED" = "1" ]; then
+            echo "::error::at least one invocation returned the wrong label"
+            exit 1
+          fi
 
+      # Both containers' logs go to the job output as well as the artifact, so a crashed
+      # deployment shows its traceback right here instead of behind an artifact download.
       - name: Capture endpoint details and logs
         if: always()
         run: |
@@ -123,9 +173,14 @@ jobs:
           az ml online-endpoint show --name "$ENDPOINT_NAME" \
             --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" > evidence/endpoint.json || true
-          az ml online-deployment get-logs --name blue --endpoint-name "$ENDPOINT_NAME" \
-            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --lines 200 > evidence/deployment.log || true
+          for CONTAINER in inference-server storage-initializer; do
+            echo "::group::$CONTAINER logs"
+            az ml online-deployment get-logs --name blue --endpoint-name "$ENDPOINT_NAME" \
+              --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --container "$CONTAINER" --lines 300 | tee "evidence/$CONTAINER.log" || true
+            echo "::endgroup::"
+          done
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         if: always()

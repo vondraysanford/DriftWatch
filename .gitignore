@@ -12,9 +12,17 @@ __pycache__/
 .env
 .DS_Store
 mlruns/
+mlflow.db
 
 # Raw data lives under DVC, never in git
 data/raw/
 
 # Model fetched from the registry at build time (python -m serving.fetch_model)
 serving/model/
+
+# Scoring-code snapshot assembled right before a managed-endpoint deployment
+infra/managed-endpoint/code/
+
+# Downloaded GitHub Actions logs and artifacts used while diagnosing runs
+Failed_deploy_prove_teardown_logs/
+managed-endpoint-evidence/
