@@ -21,6 +21,7 @@ pipeline; the folder is excluded from the Docker build context and from deploy t
 |---|---|---|
 | `phase-6/dashboard-light.png` | The dashboard rendered headless (Chrome) from a local instance of the serving app reading the production prediction log and monitoring feeds: champion v2 tiles, 2,592 predictions from 44 engines, predictions per hour stacked by regime, the probability distribution with the operating threshold, drift share per regime across the detector's runs against the 30% line, the champion's ROC-AUC on labeled traffic rising from 0.50 to 0.99 across the "v2 promoted" line, and the champion-vs-challenger, deployments, and recent-prediction tables. | 2026-09-04 |
 | `phase-6/dashboard-dark.png` | The same page under the dark color scheme, from the same palette stepped for the dark surface (both modes validated for color-vision-deficiency separation). | 2026-09-04 |
+| `phase-6/dashboard-live-azure.png` | The dashboard served by the Azure Container App itself (revision 9, image `<sha>-v2`), rendered headless from the public URL after the first `deploy.yml` run that built the dashboard on the runner. The third row of its deployments table is the record that run wrote to blob storage from CI. | 2026-09-04 |
 
 ## Phase 5 — Drift + retrain loop
 

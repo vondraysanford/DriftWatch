@@ -2,7 +2,7 @@
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
 [![License: MIT](https://img.shields.io/github/license/vondraysanford/DriftWatch)](LICENSE)
-[![Build plan: phase 5 of 6 complete](https://img.shields.io/badge/build_plan-phase_5_of_6_complete-orange)](DriftWatch-Guide.md)
+[![Build plan: all 6 phases complete](https://img.shields.io/badge/build_plan-all_6_phases_complete-brightgreen)](DriftWatch-Guide.md)
 [![Last commit](https://img.shields.io/github/last-commit/vondraysanford/DriftWatch)](https://github.com/vondraysanford/DriftWatch/commits/main)
 
 [![Azure ML](https://img.shields.io/badge/Azure_ML-0078D4)](https://azure.microsoft.com/products/machine-learning)
@@ -158,7 +158,7 @@ On the new regime the champion is a coin flip that flags every window as failing
 
 Two bugs the first run exposed, both fixed and kept in the record: the image tag was the commit SHA, which a promotion does not change, so Container Apps kept the old revision serving while the deploy reported success (tags are now commit plus model version, and the smoke test asserts the served version); and a mutable tag means a cold start after scale-to-zero can change production with no deploy at all. Merge to live endpoint on an ordinary push: 4m 46s.
 
-**Dashboard** (`/dashboard` on the same container, `/api/*` behind it). Tiles for the champion, the latest verdict, ROC-AUC on the replayed regime, prediction volume, and the latest deployment; predictions per hour stacked by regime; the failure-probability distribution against the operating threshold; drift share per regime across the detector's runs against the 30% line; the champion's ROC-AUC on labeled traffic with promotions marked; and tables for champion-vs-challenger, deployments, and recent predictions. Every chart has a table twin, tooltips on every mark, one filter row, dark mode from the same palette, and the two-series palette validated for color-vision-deficiency separation in both modes. It reads the same blob-stored log and monitoring feeds the pipeline writes, cached for a minute.
+**Dashboard**, live at [ca-driftwatch…azurecontainerapps.io/dashboard](https://ca-driftwatch.nicewater-47c03558.eastus2.azurecontainerapps.io/dashboard/) (`/dashboard` on the same container, `/api/*` behind it; the first load after idle waits out the 32.7 s cold start, which is the price of $0 idle). Tiles for the champion, the latest verdict, ROC-AUC on the replayed regime, prediction volume, and the latest deployment; predictions per hour stacked by regime; the failure-probability distribution against the operating threshold; drift share per regime across the detector's runs against the 30% line; the champion's ROC-AUC on labeled traffic with promotions marked; and tables for champion-vs-challenger, deployments, and recent predictions. Every chart has a table twin, tooltips on every mark, one filter row, dark mode from the same palette, and the two-series palette validated for color-vision-deficiency separation in both modes. It reads the same blob-stored log and monitoring feeds the pipeline writes, cached for a minute.
 
 ![DriftWatch dashboard](docs/evidence/phase-6/dashboard-light.png)
 

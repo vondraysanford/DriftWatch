@@ -173,7 +173,11 @@ This is the project's differentiator. Detecting silent model decay is exactly wh
    ✅ *Done 2026-09-04.* Mermaid architecture diagram in the README (rendered by GitHub, nothing to install) replacing the ASCII sketch; dashboard renders in light and dark under `docs/evidence/phase-6/` and embedded in the README.
 5. Write a short reflection on the operational lessons — this ties the project back to real ML engineering. *(Build-log post 6.)*
 
+   ✅ *Done 2026-09-04.* The README's "Lessons" section (eight of them, each tied to a measured event in this build) and the post 6 brief.
+
 **Final checkpoint:** The Container Apps endpoint live, the managed-endpoint demonstration documented, a monitoring dashboard up, and a README that walks a reader from data to deployment to drift detection with real numbers.
+
+✅ **Done 2026-09-04.** Container App live on revision 9 (image `<sha>-v2`, champion version 2, $0 idle); managed-endpoint demonstration documented with its four attempts and teardown proof; dashboard served from the same container at `/dashboard`, verified from the public URL with every `/api/*` route returning the production log and feeds, including a deployment record the deploy workflow wrote from CI; README walks data → training → serving → CI/CD → drift → retrain → dashboard with measured numbers throughout and one honestly unmeasured item. Six phases, six build-log posts.
 
 ---
 
