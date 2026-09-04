@@ -67,9 +67,14 @@ def require_env(name: str) -> str:
     return value
 
 
+def configure_tracking() -> None:
+    """Point MLflow at the workspace. Enough for registry reads (serving.fetch_model)."""
+    mlflow.set_tracking_uri(require_env("MLFLOW_TRACKING_URI"))
+
+
 def configure_mlflow() -> str:
     """Point MLflow at the workspace and select the experiment. Returns the experiment name."""
-    mlflow.set_tracking_uri(require_env("MLFLOW_TRACKING_URI"))
+    configure_tracking()
     experiment = require_env("MLFLOW_EXPERIMENT_NAME")
     mlflow.set_experiment(experiment)
     return experiment

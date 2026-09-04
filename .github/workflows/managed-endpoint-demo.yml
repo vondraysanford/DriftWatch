@@ -1,0 +1,147 @@
+# Azure ML managed online endpoint: a demonstration, not a deployment target.
+#
+# Managed online endpoints bill per instance-hour around the clock with no scale-to-zero
+# (roughly $70+/month if forgotten), so this workflow stands one up, proves it serves, captures
+# the evidence, and tears it down in the same run. Teardown runs under `if: always()`, so a
+# failed smoke test still removes the endpoint.
+#
+# It is manual-only on purpose (decision 13): it must never run on merge.
+#
+# Note on what this proves: the managed endpoint serves the registered MLflow model directly, so
+# it takes the 99 computed FEATURES. The persistent Container Apps demo serves the FastAPI app,
+# which takes RAW cycles and computes features itself. Different contracts, same model.
+name: managed-endpoint-demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Registry version to deploy (blank = latest)'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: managed-endpoint-demo
+  cancel-in-progress: false
+
+jobs:
+  demonstrate:
+    name: deploy, prove, tear down
+    runs-on: ubuntu-latest
+    env:
+      ENDPOINT_NAME: driftwatch-demo-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6  # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prepare the Azure ML CLI
+        run: az extension add --name ml --yes --only-show-errors
+
+      - name: Resolve the model version
+        id: model
+        run: |
+          VERSION="${{ inputs.model_version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(az ml model list \
+              --name "${{ vars.DRIFTWATCH_MODEL_NAME }}" \
+              --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --query "max_by([], &to_number(version)).version" -o tsv)
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${{ vars.DRIFTWATCH_MODEL_NAME }} version $VERSION"
+
+      - name: Create the endpoint
+        run: |
+          az ml online-endpoint create \
+            --name "$ENDPOINT_NAME" \
+            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --auth-mode key
+
+      # No scoring script and no environment: the registered model is in MLflow format, so
+      # Azure ML builds the serving container itself. This is the fastest honest path from
+      # registry to live endpoint, and it is the point of the demonstration.
+      - name: Create the deployment
+        run: |
+          az ml online-deployment create \
+            --name blue \
+            --endpoint-name "$ENDPOINT_NAME" \
+            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --model "azureml:${{ vars.DRIFTWATCH_MODEL_NAME }}:${{ steps.model.outputs.version }}" \
+            --instance-type Standard_DS2_v2 \
+            --instance-count 1 \
+            --all-traffic
+
+      - name: Invoke it and time the response
+        run: |
+          echo "## Managed endpoint demonstration" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for i in 1 2 3 4 5; do
+            START=$(date +%s%N)
+            RESULT=$(az ml online-endpoint invoke \
+              --name "$ENDPOINT_NAME" \
+              --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --request-file serving/examples/managed_endpoint_payload.json -o tsv)
+            MS=$(( ($(date +%s%N) - START) / 1000000 ))
+            echo "invocation $i: ${MS}ms, result $RESULT"
+            echo "- invocation $i: ${MS} ms, prediction \`$RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Capture endpoint details and logs
+        if: always()
+        run: |
+          mkdir -p evidence
+          az ml online-endpoint show --name "$ENDPOINT_NAME" \
+            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" > evidence/endpoint.json || true
+          az ml online-deployment get-logs --name blue --endpoint-name "$ENDPOINT_NAME" \
+            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --lines 200 > evidence/deployment.log || true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: always()
+        with:
+          name: managed-endpoint-evidence
+          path: evidence/
+
+      # The whole reason this workflow is separate. Runs even if anything above failed.
+      - name: Tear down
+        if: always()
+        run: |
+          az ml online-endpoint delete \
+            --name "$ENDPOINT_NAME" \
+            --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --yes --no-wait
+          echo "Requested deletion of $ENDPOINT_NAME"
+
+      - name: Confirm nothing is left billing
+        if: always()
+        run: |
+          for i in $(seq 1 30); do
+            REMAINING=$(az ml online-endpoint list \
+              --workspace-name "${{ vars.AZURE_ML_WORKSPACE }}" \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --query "length([?name=='$ENDPOINT_NAME'])" -o tsv 2>/dev/null || echo 0)
+            if [ "$REMAINING" = "0" ]; then
+              echo "Confirmed: $ENDPOINT_NAME is gone."
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "Endpoint torn down and confirmed deleted." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "still deleting ($i/30)"; sleep 20
+          done
+          echo "::error::$ENDPOINT_NAME still exists after 10 minutes. DELETE IT MANUALLY: it bills hourly."
+          exit 1

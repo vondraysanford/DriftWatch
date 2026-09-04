@@ -1,0 +1,146 @@
+# CI/CD to Azure Container Apps. No stored cloud secrets: `azure/login` authenticates with a
+# federated credential, so GitHub presents a short-lived signed token and Azure trusts the
+# repository and branch it names. Every `vars.*` below is an identifier, not a secret.
+#
+# The managed online endpoint demonstration is deliberately NOT here; it bills around the clock,
+# so it lives in managed-endpoint-demo.yml behind workflow_dispatch (decision 13).
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'notebooks/**'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required for OIDC; this is what replaces a stored credential
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPOSITORY: driftwatch
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.11'
+      - name: Install the serving dependencies
+        run: pip install -r serving/requirements.txt
+      - name: Feature contract and request validation
+        run: python -m scripts.sanity_check
+
+  build-and-deploy:
+    name: build, push, deploy
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6  # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.11'
+
+      # The image must contain the model, so the registry pull happens before the build
+      # (decision 11). The runner authenticates with the same federated credential.
+      - name: Pull the registered model into the build context
+        env:
+          DRIFTWATCH_MODEL_NAME: ${{ vars.DRIFTWATCH_MODEL_NAME }}
+        run: |
+          az extension add --name ml --yes --only-show-errors
+          MLFLOW_TRACKING_URI=$(az ml workspace show \
+            --name "${{ vars.AZURE_ML_WORKSPACE }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query mlflow_tracking_uri -o tsv)
+          echo "::add-mask::$MLFLOW_TRACKING_URI"
+          export MLFLOW_TRACKING_URI
+          pip install -r requirements.txt
+          python -m serving.fetch_model
+          echo "MODEL_VERSION=$(python -c "import json;print(json.load(open('serving/model/model_info.json'))['version'])")" >> "$GITHUB_ENV"
+
+      - name: Log in to the container registry
+        run: az acr login --name "${{ vars.ACR_NAME }}"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
+        with:
+          context: .
+          file: serving/Dockerfile
+          push: true
+          # Container Apps runs amd64. Runners are amd64 too, but stating it keeps an
+          # arm64 Mac from pushing an image the platform silently refuses to start.
+          platforms: linux/amd64
+          tags: |
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Deployed from the same Bicep template used by hand, so CI and local stay identical.
+      - name: Deploy to Container Apps
+        id: deploy
+        run: |
+          URL=$(az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "driftwatch-app-${{ github.run_number }}" \
+            --template-file infra/containerapp.bicep \
+            --parameters \
+              image="${{ vars.ACR_NAME }}.azurecr.io/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}" \
+              acrName="${{ vars.ACR_NAME }}" \
+              storageAccountName="${{ vars.AZURE_STORAGE_ACCOUNT }}" \
+            --query properties.outputs.url.value -o tsv)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $URL"
+
+      # A deploy that reports success without a working endpoint is worse than a failed deploy.
+      - name: Smoke-test the live endpoint
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          for i in $(seq 1 30); do
+            curl -fs --max-time 30 "$URL/health" > /tmp/health.json && break
+            echo "waiting for a replica to start ($i/30)"; sleep 10
+          done
+          cat /tmp/health.json; echo
+          curl -fs --max-time 30 -X POST "$URL/predict" \
+            -H 'Content-Type: application/json' \
+            -d @serving/examples/near_failure.json > /tmp/predict.json
+          python - <<'PY'
+          import json
+          p = json.load(open("/tmp/predict.json"))
+          print(f"unit={p['unit']} cycle={p['cycle']} probability={p['probability']:.4f} "
+                f"label={p['label']} model={p['model']['name']} v{p['model']['version']}")
+          assert p["label"] == 1, "the near-failure example should be flagged"
+          PY
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### DriftWatch deploy"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Endpoint | ${{ steps.deploy.outputs.url }} |"
+            echo "| Image tag | \`${{ github.sha }}\` |"
+            echo "| Model version | ${MODEL_VERSION:-unknown} |"
+          } >> "$GITHUB_STEP_SUMMARY"

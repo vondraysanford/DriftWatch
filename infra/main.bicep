@@ -33,6 +33,19 @@ module workspace 'modules/workspace.bicep' = {
   }
 }
 
+// Durable Container Apps footprint. The app itself is deployed separately by CI
+// (infra/containerapp.bicep) because its image tag changes on every merge.
+module containerAppEnv 'modules/containerapp-env.bicep' = {
+  name: 'driftwatch-containerapp-env'
+  scope: rg
+  params: {
+    location: location
+    logAnalyticsName: workspace.outputs.logAnalyticsName
+    acrName: workspace.outputs.acrName
+    storageAccountName: workspace.outputs.storageAccountName
+  }
+}
+
 module budget 'modules/budget.bicep' = {
   name: 'driftwatch-budget'
   scope: rg
@@ -44,5 +57,8 @@ module budget 'modules/budget.bicep' = {
 }
 
 output workspaceName string = workspace.outputs.workspaceName
+output acrName string = workspace.outputs.acrName
 output acrLoginServer string = workspace.outputs.acrLoginServer
 output storageAccountName string = workspace.outputs.storageAccountName
+output containerAppEnvironment string = containerAppEnv.outputs.environmentName
+output containerAppIdentityClientId string = containerAppEnv.outputs.identityClientId

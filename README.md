@@ -2,7 +2,7 @@
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
 [![License: MIT](https://img.shields.io/github/license/vondraysanford/DriftWatch)](LICENSE)
-[![Build plan: phase 0 of 6 complete](https://img.shields.io/badge/build_plan-phase_0_of_6_complete-orange)](DriftWatch-Guide.md)
+[![Build plan: phase 3 of 6 complete](https://img.shields.io/badge/build_plan-phase_3_of_6_complete-orange)](DriftWatch-Guide.md)
 [![Last commit](https://img.shields.io/github/last-commit/vondraysanford/DriftWatch)](https://github.com/vondraysanford/DriftWatch/commits/main)
 
 [![Azure ML](https://img.shields.io/badge/Azure_ML-0078D4)](https://azure.microsoft.com/products/machine-learning)
@@ -103,7 +103,18 @@ Measured 2026-09-02 on FD001. Models train on 80 engines and are scored on 20 he
 
 The baseline won. On 20-cycle rolling features, FD001's degradation is close to linear, and fifty tuned trials could not beat a scaled logistic regression on engines it had never seen. Version 1 in the workspace registry is therefore the baseline, chosen by held-out ROC-AUC. Every run records the DVC hash of the data it trained on and the git commit. Phase 5's challenger-vs-champion check re-runs this comparison once the replayed regime exists.
 
-**Local container** (measured 2026-09-03, Apple Silicon, `docker compose up`): image builds in 22 s, healthy 2 s after start, and 50 sequential `/predict` calls run at p50 6.7 ms and p95 8.8 ms end to end. Every prediction is written to the log sink before the response returns; with the sink stopped, `/predict` returns 500 rather than an unlogged result. Cloud deployment numbers land in Phase 4.
+**Local container** (measured 2026-09-03, Apple Silicon, `docker compose up`): image builds in 22 s, healthy 2 s after start, and 50 sequential `/predict` calls run at p50 6.7 ms and p95 8.8 ms end to end. Every prediction is written to the log sink before the response returns; with the sink stopped, `/predict` returns 500 rather than an unlogged result.
+
+**Deployed** (Azure Container Apps, eastus2, min replicas 0): the same image returns identical probabilities to local and writes prediction logs to Blob Storage as its own managed identity, with no connection string or account key anywhere. Authentication to Azure from CI is an OIDC federated credential; the app registration holds zero password credentials.
+
+| | |
+|---|---|
+| Warm request | 12-27 ms |
+| Cold start from zero replicas | 32.7 s |
+| Scale-down after last request | 5 min |
+| Idle cost | $0 (no replica runs) |
+
+The 32.7-second cold start is the price of the zero-idle-cost design, not a number to hide. A minimum of one replica would remove it and cost roughly $30/month.
 
 ## Still To Report
 
@@ -150,8 +161,11 @@ drift-watch/
 │   └── retrain_trigger.py  # threshold → repository_dispatch
 ├── dashboard/              # React drift/performance UI
 ├── infra/                  # Bicep: resource group, ML workspace, ACR, budget alert
+├── scripts/
+│   └── sanity_check.py     # feature contract + request validation, no data or cloud needed
 ├── .github/workflows/
 │   ├── deploy.yml          # CI/CD: test, build, push, deploy (OIDC)
+│   ├── managed-endpoint-demo.yml  # manual only: stand up, prove, tear down
 │   └── retrain.yml         # dispatch-triggered retrain → evaluate → register
 ├── dvc.yaml                # pipeline stages
 ├── .env.example            # MLflow URI, experiment, and registry name (no secrets, never hardcoded)

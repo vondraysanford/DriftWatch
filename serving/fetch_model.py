@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,9 +22,25 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 from serving.schemas import ModelInfo
-from training.common import configure_mlflow, require_env, setup_logging
 
 log = logging.getLogger("driftwatch.fetch_model")
+
+# Deliberately standalone: this runs in the CI build step, so it must not drag in the training
+# stack (matplotlib, xgboost, scikit-learn) to download one model. The helpers below are the
+# small duplicated cousins of the ones in training/common.py.
+
+
+def require_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise SystemExit(f"{name} is not set; copy .env.example to .env and fill it in")
+    return value
+
+
+def setup_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", stream=sys.stdout)
+    for noisy in ("azure", "azureml", "urllib3", "msal"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 DEFAULT_OUT = Path("serving/model")
 SERVING_REQUIREMENTS = Path("serving/requirements.txt")
@@ -54,7 +72,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
 
-    configure_mlflow()
+    mlflow.set_tracking_uri(require_env("MLFLOW_TRACKING_URI"))
     name = require_env("DRIFTWATCH_MODEL_NAME")
     client = MlflowClient()
     version = args.version or latest_version(client, name)

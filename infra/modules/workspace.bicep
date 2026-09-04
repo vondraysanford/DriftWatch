@@ -129,5 +129,7 @@ resource mlWorkspace 'Microsoft.MachineLearningServices/workspaces@2024-04-01' =
 }
 
 output workspaceName string = mlWorkspace.name
+output acrName string = acr.name
 output acrLoginServer string = acr.properties.loginServer
 output storageAccountName string = storage.name
+output logAnalyticsName string = logAnalytics.name
