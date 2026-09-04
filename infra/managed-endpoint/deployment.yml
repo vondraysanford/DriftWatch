@@ -30,7 +30,10 @@ environment:
   conda_file: ./conda.yml
 environment_variables:
   OPERATING_THRESHOLD: OVERRIDDEN-ON-THE-COMMAND-LINE
-# Azure warns that DS2_v2 "may be too small"; DS3_v2 (4 vCPU, 14 GB) is its stated minimum for
-# general-purpose endpoints and fits the 6-vCPU DSv2 family quota.
-instance_type: Standard_DS3_v2
+# SKU choice is a quota decision. Managed endpoints validate against DOUBLE the instance's vCPUs
+# (a DS3_v2 asked for 8 cores: "Current usage/limit: 0/6. Additional needed: 8"), and this
+# subscription's DSv2 family limit is 6. DS2_v2 (2 vCPU, 7 GB) needs 4, which fits. Azure prints
+# a warning that DS2_v2 "may be too small"; for a logistic regression that peaks well under
+# 1 GB it is not, and the warning is informational. A quota increase would unlock DS3_v2.
+instance_type: Standard_DS2_v2
 instance_count: 1

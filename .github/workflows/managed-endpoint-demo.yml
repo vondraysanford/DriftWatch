@@ -129,10 +129,11 @@ jobs:
       # the endpoint answered correctly, not merely that it answered.
       - name: Invoke it and time the response
         run: |
+          SKU=$(awk '/^instance_type:/ {print $2}' infra/managed-endpoint/deployment.yml)
           {
             echo "## Managed endpoint demonstration"
             echo ""
-            echo "Registered model \`${{ vars.DRIFTWATCH_MODEL_NAME }}\` version ${{ steps.model.outputs.version }} on one \`Standard_DS3_v2\`, threshold ${{ steps.model.outputs.threshold }}."
+            echo "Registered model \`${{ vars.DRIFTWATCH_MODEL_NAME }}\` version ${{ steps.model.outputs.version }} on one \`$SKU\`, threshold ${{ steps.model.outputs.threshold }}."
             echo ""
             echo "| # | window | probability | label | round trip |"
             echo "|---|---|---|---|---|"
