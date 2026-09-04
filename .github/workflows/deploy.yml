@@ -12,7 +12,7 @@ on:
     paths-ignore:
       - '**.md'
       - 'notebooks/**'
-      - 'docs/**'
+      - 'docs/**'   # evidence screenshots and recordings; never a reason to redeploy
   workflow_dispatch:
 
 permissions:

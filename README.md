@@ -2,7 +2,7 @@
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
 [![License: MIT](https://img.shields.io/github/license/vondraysanford/DriftWatch)](LICENSE)
-[![Build plan: phase 3 of 6 complete](https://img.shields.io/badge/build_plan-phase_3_of_6_complete-orange)](DriftWatch-Guide.md)
+[![Build plan: phase 4 of 6 complete](https://img.shields.io/badge/build_plan-phase_4_of_6_complete-orange)](DriftWatch-Guide.md)
 [![Last commit](https://img.shields.io/github/last-commit/vondraysanford/DriftWatch)](https://github.com/vondraysanford/DriftWatch/commits/main)
 
 [![Azure ML](https://img.shields.io/badge/Azure_ML-0078D4)](https://azure.microsoft.com/products/machine-learning)
@@ -119,12 +119,13 @@ The 32.7-second cold start is the price of the zero-idle-cost design, not a numb
 
 **Pipeline** (`deploy.yml`, OIDC, no stored cloud secrets): a push to `main` runs the feature-contract check, pulls the registered model from the workspace registry, builds and pushes the image, deploys the Bicep template, and smoke-tests the live endpoint, failing the run if the near-failure example is not flagged. A docs-only commit is correctly skipped by `paths-ignore`.
 
+**Managed online endpoint, demonstrated and torn down** (`managed-endpoint-demo.yml`, manual only): the registered model deployed to an Azure ML managed online endpoint with our own scoring script, so it takes the same raw cycles as the Container App. Run #4 went green in 18m 29s: endpoint up in 1m 6s, environment built and deployment live in 9m 25s, five invocations answered correctly (1.0000 / label 1 for the near-failure window, 0.0352 / label 0 for the healthy one, identical to the Container App; the run fails on a wrong label), logs captured, then teardown confirmed with nothing left billing. Round trips were 2.9 to 3.3 s, timed around the `az ml online-endpoint invoke` CLI call, which is dominated by CLI start-up and token acquisition: the same scoring script answers in about 10 ms locally, and the server-side figure was not isolated in this run. It never runs on merge, because it bills per instance-hour with no scale-to-zero. Evidence: [docs/evidence](docs/evidence/README.md).
+
 ## Still To Report
 
 - Drift caught on the FD002/FD004 regime replay: which Evidently metrics fired, and at what values.
 - Retrain loop: time from drift dispatch to a newly registered model version.
-- CI/CD deploy time from merge to live endpoint.
-- Deployed endpoint latency (p50/p95) and idle cost of the persistent demo (target: $0 at zero replicas).
+- CI/CD deploy time from merge to live endpoint, and the managed endpoint's server-side latency (the demonstration timed only the CLI round trip).
 
 ## Build Log
 
