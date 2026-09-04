@@ -92,6 +92,15 @@ jobs:
             monitoring/out/*.html
           if-no-files-found: warn
 
+      # The dashboard reads verdicts from blob storage, next to the prediction log.
+      - name: Publish the verdict for the dashboard
+        if: always()
+        run: |
+          [ -f monitoring/out/verdict.json ] || exit 0
+          az storage blob upload --auth-mode login --only-show-errors \
+            --account-name "${{ vars.AZURE_STORAGE_ACCOUNT }}" --container-name predictions \
+            --name "monitoring/verdicts/$(date -u +%Y%m%dT%H%M%SZ).json" --file monitoring/out/verdict.json
+
       # Sends repository_dispatch(drift-detected) only when the verdict says drift; a no-drift or
       # not-enough-data verdict exits 0 without dispatching. A failed HTTP call fails the job.
       - name: Trigger retraining on drift

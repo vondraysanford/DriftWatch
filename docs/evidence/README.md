@@ -15,6 +15,13 @@ pipeline; the folder is excluded from the Docker build context and from deploy t
 | `phase-4/managed-endpoint-demo-run-4-green.png` | The manual `managed-endpoint-demo` workflow, run #4, green end to end in 18m 29s: endpoint created (1m 6s), custom environment built and deployment created (9m 25s), five invocations (15s), logs captured, teardown, and "Confirm nothing is left billing" passing after 6m 47s. | 2026-09-03 |
 | `phase-4/managed-endpoint-demo-run-4-summary-table.png` | The same run's summary: registered model version 1 on one `Standard_DS2_v2` at threshold 0.4068; five invocations all correct (near-failure window 1.0000 / label 1, healthy window 0.0352 / label 0, identical to the Container App); round trips 3335, 2890, 2923, 2978, 2951 ms measured around the `az ml online-endpoint invoke` CLI call (mostly CLI start-up and token acquisition, not inference); "Endpoint torn down and confirmed deleted." | 2026-09-03 |
 
+## Phase 6 — Dashboard
+
+| File | What it proves | Taken |
+|---|---|---|
+| `phase-6/dashboard-light.png` | The dashboard rendered headless (Chrome) from a local instance of the serving app reading the production prediction log and monitoring feeds: champion v2 tiles, 2,592 predictions from 44 engines, predictions per hour stacked by regime, the probability distribution with the operating threshold, drift share per regime across the detector's runs against the 30% line, the champion's ROC-AUC on labeled traffic rising from 0.50 to 0.99 across the "v2 promoted" line, and the champion-vs-challenger, deployments, and recent-prediction tables. | 2026-09-04 |
+| `phase-6/dashboard-dark.png` | The same page under the dark color scheme, from the same palette stepped for the dark surface (both modes validated for color-vision-deficiency separation). | 2026-09-04 |
+
 ## Phase 5 — Drift + retrain loop
 
 | File | What it proves | Taken |

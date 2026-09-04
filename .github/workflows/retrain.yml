@@ -95,6 +95,15 @@ jobs:
           path: monitoring/out/challenge.json
           if-no-files-found: warn
 
+      # The dashboard's performance view reads challenge results from blob storage.
+      - name: Publish the challenge result for the dashboard
+        if: always()
+        run: |
+          [ -f monitoring/out/challenge.json ] || exit 0
+          az storage blob upload --auth-mode login --only-show-errors \
+            --account-name "${{ vars.AZURE_STORAGE_ACCOUNT }}" --container-name predictions \
+            --name "monitoring/challenges/$(date -u +%Y%m%dT%H%M%SZ).json" --file monitoring/out/challenge.json
+
       # Hands off to deploy.yml, whose production job waits for a required reviewer before
       # promoting the version to champion and shipping it.
       - name: Request promotion

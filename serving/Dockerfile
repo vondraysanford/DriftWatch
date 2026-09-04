@@ -14,10 +14,14 @@ WORKDIR /app
 COPY serving/requirements.txt serving/requirements.txt
 RUN pip install --no-cache-dir -r serving/requirements.txt
 
-# Same feature code as training, plus the app and the model fetched at build time.
+# Same feature code as training, the log reader the metrics API shares with the drift monitor,
+# the app, the model fetched at build time, and the dashboard built at build time.
 COPY data/ data/
+COPY monitoring/__init__.py monitoring/logs.py monitoring/
 COPY serving/ serving/
+COPY dashboard/dist/ dashboard/dist/
 RUN test -f serving/model/model_info.json || (echo "serving/model is missing: run python -m serving.fetch_model first" && exit 1)
+RUN test -f dashboard/dist/index.html || (echo "dashboard/dist is missing: run npm ci && npm run build in dashboard/ first" && exit 1)
 
 RUN useradd --create-home --uid 1000 app && chown -R app:app /app
 USER app

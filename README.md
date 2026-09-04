@@ -65,31 +65,47 @@ Plenty of candidates can train a model in a notebook. Far fewer can operationali
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    subgraph data["Data (DVC, Azure Blob remote)"]
+        raw["C-MAPSS raw<br/>FD001 trains, FD002 quarantined"]
+        feats["ingest → features → split by engine<br/>train / test / holdout parquet"]
+        raw --> feats
+    end
+
+    subgraph train["Training (local compute, Azure ML tracks it)"]
+        tr["train.py / tune.py<br/>baseline, Optuna XGBoost"]
+        reg["Model registry<br/>stage=champion pointer"]
+        tr --> reg
+    end
+    feats --> tr
+
+    subgraph cicd["GitHub Actions (OIDC, no stored cloud secrets)"]
+        deploy["deploy.yml<br/>test → build → push → deploy<br/>promotions wait for a reviewer"]
+        drift["drift.yml every 6 h<br/>Evidently, per regime"]
+        retrain["retrain.yml<br/>challenge on the mixed bench"]
+    end
+    reg -- "champion baked in at build" --> deploy
+
+    subgraph azure["Azure"]
+        aca["Container Apps<br/>/predict on raw cycles, min replicas 0<br/>/dashboard"]
+        log[("Blob Storage<br/>prediction log JSONL<br/>verdicts, challenges, deployments")]
+        mep["Managed online endpoint<br/>demonstrated, torn down"]
+    end
+    deploy --> aca
+    deploy -. manual demo .-> mep
+    aca -- "every prediction: raw + features + output" --> log
+
+    log --> drift
+    drift -- "DRIFT → repository_dispatch" --> retrain
+    retrain -- "registers a challenger" --> reg
+    retrain -- "model-registered" --> deploy
+    log --> aca
+
+    replay["replay.py<br/>held-out FD002 engines as traffic"] --> aca
 ```
-C-MAPSS FD001 (train)                      C-MAPSS FD002/FD004 (held out)
-        │                                              │
-        ▼                                              │  replayed as
-  DVC-versioned ingestion ──► feature engineering      │  "production" traffic
-        │                                              │
-        ▼                                              │
-  Training + Optuna search ──► MLflow tracking + registry (Azure ML workspace)
-        │                                              │
-        ▼                                              ▼
-  GitHub Actions CI/CD (OIDC, no stored secrets)
-        ├──► Azure ML managed endpoint (demonstrated, then torn down)
-        └──► Azure Container Apps (persistent demo, scales to zero)
-                                │
-                                ▼
-                         prediction logs
-                                │
-                                ▼
-                  Evidently drift + performance checks
-                                │
-              ┌─────────────────┴─────────────────┐
-              ▼                                   ▼
-  Dashboard (drift + performance)    repository_dispatch ──► retrain
-                                     workflow ──► evaluate ──► register v2
-```
+
+The loop, in one line: traffic is logged, the detector compares it with the champion's training data per regime, drift dispatches a retrain, the retrain registers a challenger only if it wins on a bench neither model has seen, and a human approves the promotion before anything changes in production.
 
 ## Results So Far
 
@@ -142,9 +158,24 @@ On the new regime the champion is a coin flip that flags every window as failing
 
 Two bugs the first run exposed, both fixed and kept in the record: the image tag was the commit SHA, which a promotion does not change, so Container Apps kept the old revision serving while the deploy reported success (tags are now commit plus model version, and the smoke test asserts the served version); and a mutable tag means a cold start after scale-to-zero can change production with no deploy at all. Merge to live endpoint on an ordinary push: 4m 46s.
 
-## Still To Report
+**Dashboard** (`/dashboard` on the same container, `/api/*` behind it). Tiles for the champion, the latest verdict, ROC-AUC on the replayed regime, prediction volume, and the latest deployment; predictions per hour stacked by regime; the failure-probability distribution against the operating threshold; drift share per regime across the detector's runs against the 30% line; the champion's ROC-AUC on labeled traffic with promotions marked; and tables for champion-vs-challenger, deployments, and recent predictions. Every chart has a table twin, tooltips on every mark, one filter row, dark mode from the same palette, and the two-series palette validated for color-vision-deficiency separation in both modes. It reads the same blob-stored log and monitoring feeds the pipeline writes, cached for a minute.
+
+![DriftWatch dashboard](docs/evidence/phase-6/dashboard-light.png)
+
+## Not Measured
 
 - The managed endpoint's server-side latency (the demonstration timed only the CLI round trip).
+
+## Lessons
+
+- **The model was 20% of the work and it showed.** A logistic regression beat tuned XGBoost, then went to a coin flip on a regime it had never seen, then recovered by being retrained on it. Every interesting number in this project came from the pipeline around the model, not from the model.
+- **Enforce data rules in code, not prose.** The FD002 quarantine was a guard in the ingest script and a DAG that named its input files. That is why it could be lifted deliberately, with a flag and a warning, on the day it was needed.
+- **Prove parity numerically.** One feature function shared by training and serving, and a test that the served probability equals the training table's to floating-point noise. Cheap, repeatable, and the single check that makes the drift monitor's inputs trustworthy.
+- **A green run is not a deployment.** The promotion run reported success while the old model kept serving. The fix was a unique image tag and a smoke test that asserts what was supposed to change. Keep the screenshot of the run that lied.
+- **Gate the promotion, automate everything else.** Drift, retrain, challenge, registration, and the promotion request need no human. The one step that changes production has a reviewer, a comment, and a record.
+- **Calibrate the detector against real in-distribution traffic before believing it.** Defaults produced a false alarm on 25 records and a near miss on 781; a minimum-sample gate and a per-column cut set from held-out FD001 engines fixed both. Then compare per regime, or a retrained model gets accused of the composition of its own traffic.
+- **Secretless means fewer things to get wrong, not zero.** Federated credentials removed every stored cloud secret; the OIDC subject still changed twice (ID-qualified names, then environment names), and each time the failing run's own token details named the fix.
+- **Cost guardrails are features.** Scale-to-zero at $0 idle, a budget alert before the first deploy, and a managed endpoint that tears itself down under `always()`, tested by three failures before it was tested by success. Month-to-date spend stayed in the low single digits of dollars.
 
 ## Build Log
 
@@ -175,12 +206,16 @@ drift-watch/
 │   ├── challenge.py        # champion vs challenger on the mixed held-out bench; register on a win
 │   └── promote.py          # move the champion tag; the one human-approved step
 ├── serving/
-│   ├── app.py              # FastAPI: /predict, /health, /model
+│   ├── app.py              # FastAPI: /predict, /health, /model, plus /dashboard and /api
 │   ├── schemas.py          # request/response shapes generated from data/schema.py
 │   ├── model.py            # load the baked model, score one window
 │   ├── sinks.py            # prediction log: Postgres locally, Blob JSONL on Azure
-│   ├── fetch_model.py      # build-time pull of the registered model
+│   ├── metrics.py          # /api/*: aggregates of the log and the monitoring feeds, cached
+│   ├── fetch_model.py      # build-time pull of the champion from the registry
 │   └── Dockerfile
+├── dashboard/              # React + Vite + TypeScript + Recharts; built before the image, served at /dashboard
+│   └── src/                # api.ts (typed client), components/ (each chart has a table twin)
+├── docs/evidence/          # screenshots per phase, each indexed with what it proves
 ├── monitoring/
 │   ├── logs.py             # read the prediction log back (Blob, Postgres, or local JSONL)
 │   ├── replay.py           # send the quarantined regime through the live endpoint as traffic
@@ -219,15 +254,19 @@ python -m training.train --model logreg
 python -m training.tune --trials 50
 python -m training.register --metric roc_auc
 
-# 4. Serve locally (API + Postgres prediction log)
+# 4. Serve locally (API + dashboard + Postgres prediction log)
 python -m serving.fetch_model          # registry -> serving/model/, baked in at build time
+(cd dashboard && npm ci && npm run build)   # -> dashboard/dist, baked in the same way
 docker compose up --build
 curl -f localhost:8000/health
 curl -fs -X POST localhost:8000/predict -H 'Content-Type: application/json' \
      -d @serving/examples/near_failure.json
+open http://localhost:8000/dashboard/
 
-# 5. Replay the held-out regime and run drift monitoring
-python monitoring/drift.py --reference data/ref.parquet --current data/live_fd002.parquet
+# 5. Replay the held-out regime through a live endpoint and run the detector on its log
+python -m monitoring.replay --endpoint https://<your-endpoint> --engines 24 --every 5
+python -m monitoring.drift --logs-from blob --since-hours 24 \
+    --labels-from data/interim/fd001_train.parquet data/interim/fd002_train.parquet
 ```
 
 ## License

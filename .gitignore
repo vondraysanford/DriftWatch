@@ -26,6 +26,10 @@ infra/managed-endpoint/code/
 # Drift reports, replay results, and verdicts (run artifacts; CI uploads them)
 monitoring/out/
 
+# Dashboard: dependencies and the build output (built before each image build, like the model)
+dashboard/node_modules/
+dashboard/dist/
+
 # Downloaded GitHub Actions logs and artifacts used while diagnosing runs
 Failed_deploy_prove_teardown_logs/
 managed-endpoint-evidence/

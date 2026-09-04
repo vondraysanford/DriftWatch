@@ -15,14 +15,24 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from serving.config import Settings
+from serving.metrics import MetricsStore
+from serving.metrics import router as metrics_router
 from serving.model import LoadedModel, load_model, score_window
 from serving.schemas import ModelInfo, ModelRef, PredictRequest, PredictResponse
 from serving.sinks import PredictionRecord, PredictionSink, make_sink, now_utc
 
 log = logging.getLogger("driftwatch.serving")
+
+# The built React dashboard (dashboard/dist), produced before the image build like the model.
+DASHBOARD_DIR = Path(os.environ.get("DASHBOARD_DIR", "dashboard/dist"))
 
 
 class JsonFormatter(logging.Formatter):
@@ -60,6 +70,7 @@ async def lifespan(app: FastAPI):
     sink.ping()
     app.state.model = loaded
     app.state.sink = sink
+    app.state.metrics = MetricsStore(settings)
     log.info("ready", extra={"fields": {
         "model": loaded.info.name, "version": loaded.info.version, "threshold": loaded.info.threshold,
         "sink": sink.kind,
@@ -75,6 +86,16 @@ app = FastAPI(
     description="Turbofan failure-within-30-cycles prediction on raw C-MAPSS cycle windows. Every prediction is logged.",
     lifespan=lifespan,
 )
+app.include_router(metrics_router)
+if DASHBOARD_DIR.is_dir():
+    app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_DIR), html=True), name="dashboard")
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    if DASHBOARD_DIR.is_dir():
+        return RedirectResponse("/dashboard/")
+    return {"service": "DriftWatch", "predict": "/predict", "health": "/health", "model": "/model", "metrics": "/api/summary"}
 
 
 @app.get("/health")

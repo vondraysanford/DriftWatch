@@ -1,0 +1,125 @@
+/* Chart chrome, series slots, and status colors from the validated reference palette.
+   Light values on :root; dark redefined under the OS preference (guarded so an explicit
+   light choice wins) and again under data-theme="dark" so a toggle wins both ways. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6; /* fd001 */
+  --series-2: #eb6834; /* fd002 */
+  --series-1-wash: rgba(42, 120, 214, 0.1);
+  --status-good: #0ca30c;
+  --status-critical: #d03b3b;
+  --status-warning: #fab219;
+  --success-text: #006300;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-1-wash: rgba(57, 135, 229, 0.12);
+    --success-text: #0ca30c;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-1-wash: rgba(57, 135, 229, 0.12);
+  --success-text: #0ca30c;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+a { color: inherit; }
+
+.app { max-width: 1240px; margin: 0 auto; padding: 24px 20px 48px; }
+
+.masthead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 24px; margin-bottom: 16px; }
+.masthead h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.masthead .sub { color: var(--ink-2); }
+.masthead a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--border); }
+
+/* One filter row above everything it scopes. */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 20px; color: var(--ink-2); }
+.filters .group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.filters button { appearance: none; border: 0; background: transparent; color: var(--ink-2); font: inherit; padding: 6px 12px; cursor: pointer; }
+.filters button[aria-pressed='true'] { background: var(--series-1-wash); color: var(--ink); font-weight: 600; }
+.filters button:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.filters .status { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* KPI row of stat tiles. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-height: 84px; }
+.tile .label { color: var(--ink-2); font-size: 12.5px; }
+.tile .value { font-size: 26px; font-weight: 600; line-height: 1.15; margin-top: 4px; }
+.tile .value.hero { font-size: 48px; }
+.tile .note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.tile .status-line { display: inline-flex; align-items: center; gap: 6px; }
+.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.status-dot.good { background: var(--status-good); }
+.status-dot.critical { background: var(--status-critical); }
+.status-dot.warning { background: var(--status-warning); }
+
+/* Chart cards. */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px 10px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.card header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.card h2 { font-size: 15px; font-weight: 600; margin: 0; }
+.card .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
+.card .toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.card .toggle button { appearance: none; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 12px; padding: 3px 9px; cursor: pointer; }
+.card .toggle button[aria-pressed='true'] { background: var(--series-1-wash); color: var(--ink); }
+.card .body { min-height: 260px; transition: opacity 160ms; }
+.card .body.stale { opacity: 0.55; }
+.empty { color: var(--muted); padding: 32px 0; text-align: center; }
+
+/* Legend: a colored key beside text in text tokens, never colored text. */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--ink-2); font-size: 12.5px; margin: 6px 0 2px; }
+.legend .key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+.legend .line-key { display: inline-block; width: 16px; height: 2px; vertical-align: 3px; margin-right: 6px; border-radius: 1px; }
+
+/* Tooltip. */
+.tip { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: var(--ink); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
+.tip .t { color: var(--ink-2); margin-bottom: 4px; }
+.tip .row { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
+
+/* Table twin for every chart. */
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 600; }
+td.num, th.num { text-align: right; }
+.table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+.error { color: var(--status-critical); padding: 12px 0; }

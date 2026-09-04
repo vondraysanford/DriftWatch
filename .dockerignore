@@ -14,6 +14,11 @@ infra
 training
 docs
 tests
+monitoring/out
+# The dashboard source never enters the image, only its build output.
+dashboard/**
+!dashboard/dist
+!dashboard/dist/**
 data/raw
 data/interim
 data/processed

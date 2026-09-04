@@ -75,6 +75,20 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The dashboard is built here and copied into the image, like the model: the image never
+      # needs Node. Exact versions come from dashboard/package-lock.json (npm ci refuses drift).
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          ls -la dist
+
       - name: Point at the workspace
         run: |
           az extension add --name ml --yes --only-show-errors
@@ -162,6 +176,24 @@ jobs:
           assert served == expected, f"endpoint serves model version {served}, expected {expected}: the deploy did not take effect"
           print(f"live endpoint serves the model this run deployed (version {served})")
           PY
+
+      # One JSON record per deploy, so the dashboard can show which model served when.
+      - name: Record the deployment for the dashboard
+        run: |
+          python - <<'PY' > deployment.json
+          import json, os, datetime
+          print(json.dumps({
+              "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "model_version": os.environ.get("MODEL_VERSION"),
+              "image_tag": f"{os.environ['GITHUB_SHA']}-v{os.environ.get('MODEL_VERSION')}",
+              "promotion": os.environ.get("PROMOTE_VERSION") or None,
+              "event": os.environ.get("GITHUB_EVENT_NAME"),
+              "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }))
+          PY
+          az storage blob upload --auth-mode login --only-show-errors \
+            --account-name "${{ vars.AZURE_STORAGE_ACCOUNT }}" --container-name predictions \
+            --name "monitoring/deployments/$(date -u +%Y%m%dT%H%M%SZ).json" --file deployment.json
 
       - name: Summary
         if: always()

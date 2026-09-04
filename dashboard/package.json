@@ -1,0 +1,25 @@
+{
+  "name": "driftwatch-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Predictions, drift verdicts, and model performance for DriftWatch, served by the same container as /predict.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "3.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  }
+}
