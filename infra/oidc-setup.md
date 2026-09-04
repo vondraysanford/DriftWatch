@@ -41,6 +41,36 @@ Verify no password credential exists (the expected answer is `0`):
 az ad app credential list --id "$APP_OBJECT_ID" --query "length(@)" -o tsv
 ```
 
+### The subject GitHub actually presents
+
+The first run failed with `AADSTS700213: No matching federated identity record found for
+presented assertion subject`. GitHub issued an **ID-qualified** subject, not the documented
+name-based one:
+
+```
+presented:  repo:vondraysanford@101304529/DriftWatch@1333783711:ref:refs/heads/main
+configured: repo:vondraysanford/DriftWatch:ref:refs/heads/main
+```
+
+The numbers are the account ID and the repository ID (confirmed against
+`api.github.com/users/vondraysanford` and `.../repos/vondraysanford/DriftWatch`). This form is
+stronger than the name-based one: renaming the repository or the account does not move the trust,
+and nobody who later claims the freed-up name can authenticate, because their repository ID differs.
+
+The fix is to match what is presented. Read the failing run's error rather than assuming a format:
+
+```bash
+az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
+  "name": "github-main-ids",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<owner>@<owner-id>/<repo>@<repo-id>:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+
+Both credentials are kept. An app may hold several, only one has to match, and keeping the
+name-based one costs nothing if GitHub ever issues that form instead.
+
 ## 3. RBAC, scoped per resource rather than per subscription
 
 `Contributor` on the resource group covers the control plane (deploying the Container Apps
