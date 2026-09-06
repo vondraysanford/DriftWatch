@@ -1,8 +1,11 @@
 /* ============================================
    ENGINEERING PAPER — the vondraysanford.com design system, applied to a live sheet.
-   Ink for content. Signal blue only for what is live: data, status, focus.
-   Series colors are validated for color-vision-deficiency separation in both modes
-   (dataviz validator): light #2244CC + #eb6834 on #FFFFFF; dark #5B7BE8 + #d95926 on #1A1A1F.
+   Ink for content. Signal blue only for what is live: data, status, focus, current position.
+   Light tokens are the site's :root; dark tokens are the site's theme.css overrides.
+   Chart series keep their own validated colors (dataviz validator, color-vision-deficiency
+   separation): light #2244CC + #eb6834 on #FFFFFF; dark #5B7BE8 + #d95926 on the dark panel.
+   The site's dark UI blue (#7B96FF) is too light for a 2px line against the panel, so the
+   series-1 slot is pinned separately from --signal at night.
    ============================================ */
 :root {
   color-scheme: light;
@@ -10,6 +13,7 @@
   --panel: #FFFFFF;
   --panel-tint: #FBFBF9;
   --ink: #17171B;
+  --ink-soft: #3E3E45;
   --ink-muted: #63636A;
   --hairline: #DCDCD6;
   --hairline-strong: #C4C4BD;
@@ -19,10 +23,14 @@
   --recess: #EFEFEA;
   --grid-major: rgba(23, 23, 27, 0.055);
   --grid-minor: rgba(23, 23, 27, 0.03);
+  --nav-frost: rgba(247, 247, 245, 0.86);
+  --selection-ink: #fff;
   --shadow-rgb: 23, 23, 27;
   --font-display: 'DM Serif Display', Georgia, serif;
   --font-body: 'DM Sans', -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --max-width: 1200px;
+  --transition: 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
   /* chart roles the components reference */
   --page: var(--paper);
@@ -32,29 +40,35 @@
   --grid: var(--hairline);
   --axis: var(--hairline-strong);
   --border: var(--hairline-strong);
-  --series-1: var(--signal);          /* FD001 */
+  --series-1: #2244CC;                /* FD001 */
   --series-2: #eb6834;                /* FD002, the replayed regime */
   --series-1-wash: var(--signal-soft);
   --status-good: var(--ok);
   --status-critical: #d03b3b;
   --status-warning: #c98500;
 }
+/* index.html sets data-theme before first paint; the media block only covers a no-script load. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
     --paper: #121216;
-    --panel: #1A1A1F;
-    --panel-tint: #1F1F25;
-    --ink: #F2F2EE;
-    --ink-muted: #9C9CA4;
-    --hairline: #2B2B31;
-    --hairline-strong: #3B3B44;
-    --signal: #5B7BE8;
-    --signal-soft: rgba(91, 123, 232, 0.14);
-    --ok: #2EB57D;
-    --recess: #22222A;
-    --grid-major: rgba(242, 242, 238, 0.06);
-    --grid-minor: rgba(242, 242, 238, 0.03);
+    --panel: #1A1A20;
+    --panel-tint: #16161B;
+    --ink: #EDEDEA;
+    --ink-soft: #C6C6CC;
+    --ink-muted: #9A9AA3;
+    --hairline: #26262C;
+    --hairline-strong: #34343C;
+    --signal: #7B96FF;
+    --signal-soft: rgba(123, 150, 255, 0.14);
+    --ok: #2FBD87;
+    --recess: #1F1F26;
+    --grid-major: rgba(235, 235, 234, 0.045);
+    --grid-minor: rgba(235, 235, 234, 0.025);
+    --nav-frost: rgba(18, 18, 22, 0.82);
+    --selection-ink: #121216;
+    --shadow-rgb: 0, 0, 0;
+    --series-1: #5B7BE8;
     --series-2: #d95926;
     --status-critical: #e66767;
     --status-warning: #fab219;
@@ -63,25 +77,31 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
   --paper: #121216;
-  --panel: #1A1A1F;
-  --panel-tint: #1F1F25;
-  --ink: #F2F2EE;
-  --ink-muted: #9C9CA4;
-  --hairline: #2B2B31;
-  --hairline-strong: #3B3B44;
-  --signal: #5B7BE8;
-  --signal-soft: rgba(91, 123, 232, 0.14);
-  --ok: #2EB57D;
-  --recess: #22222A;
-  --grid-major: rgba(242, 242, 238, 0.06);
-  --grid-minor: rgba(242, 242, 238, 0.03);
+  --panel: #1A1A20;
+  --panel-tint: #16161B;
+  --ink: #EDEDEA;
+  --ink-soft: #C6C6CC;
+  --ink-muted: #9A9AA3;
+  --hairline: #26262C;
+  --hairline-strong: #34343C;
+  --signal: #7B96FF;
+  --signal-soft: rgba(123, 150, 255, 0.14);
+  --ok: #2FBD87;
+  --recess: #1F1F26;
+  --grid-major: rgba(235, 235, 234, 0.045);
+  --grid-minor: rgba(235, 235, 234, 0.025);
+  --nav-frost: rgba(18, 18, 22, 0.82);
+  --selection-ink: #121216;
+  --shadow-rgb: 0, 0, 0;
+  --series-1: #5B7BE8;
   --series-2: #d95926;
   --status-critical: #e66767;
   --status-warning: #fab219;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+[hidden] { display: none !important; }
 
 /* The sheet: paper ground with the drafting grid, minor lines every 28px, major every 140px. */
 body {
@@ -98,25 +118,56 @@ body {
   background-size: 140px 140px, 140px 140px, 28px 28px, 28px 28px;
 }
 a { color: inherit; text-decoration: none; }
-::selection { background: var(--signal); color: #fff; }
-a:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+::selection { background: var(--signal); color: var(--selection-ink); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 2px; }
 
-.app { max-width: 1200px; margin: 0 auto; padding: 1.5rem 2rem 4rem; }
+/* Visually hidden, still read by screen readers: the "(opens in new tab)" cue on external links. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-/* Masthead: the site's nav row, then an eyebrow and a serif title. */
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 1.4rem; height: 60px; border-bottom: 1px solid var(--hairline); margin-bottom: 2.25rem; }
-.logo { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500; letter-spacing: 0.05em; color: var(--ink); }
+/* The sheet sits under the fixed nav; the first block clears it like the site's hero does. */
+.app { max-width: var(--max-width); margin: 0 auto; padding: 6rem 2rem 4rem; }
+
+/* ============================================
+   NAV — the portfolio site's bar, frosted over the paper, with the reading-progress hairline.
+   ============================================ */
+.portfolio-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  padding: 0 2rem;
+  background: var(--nav-frost);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--hairline);
+  transition: border-color var(--transition);
+}
+.nav-inner { max-width: var(--max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 1.4rem; height: 60px; }
+.logo { margin-right: auto; font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500; letter-spacing: 0.05em; color: var(--ink); white-space: nowrap; }
 .logo span { color: var(--ink-muted); }
-.topbar nav { display: flex; gap: 1.8rem; }
-.topbar nav a { font-size: 0.8rem; color: var(--ink-muted); letter-spacing: 0.05em; text-transform: uppercase; position: relative; transition: color 0.25s; }
-.topbar nav a::after { content: ''; position: absolute; bottom: -4px; left: 0; width: 0; height: 1px; background: var(--signal); transition: width 0.25s; }
-.topbar nav a:hover { color: var(--ink); }
-.topbar nav a:hover::after { width: 100%; }
+.logo .logo-here { color: var(--signal); }
+.nav-links { display: flex; gap: 1.8rem; list-style: none; }
+.nav-links a { font-size: 0.8rem; color: var(--ink-muted); letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; position: relative; transition: color var(--transition); }
+.nav-links a::after { content: ''; position: absolute; bottom: -4px; left: 0; width: 0; height: 1px; background: var(--signal); transition: width var(--transition); }
+.nav-links a:hover { color: var(--ink); }
+.nav-links a:hover::after { width: 100%; }
+/* 1px reading-progress hairline: current position is live state, so it is the one blue on the bar. */
+.nav-progress { position: absolute; bottom: -1px; left: 0; width: 100%; height: 1px; background: var(--signal); transform: scaleX(0); transform-origin: 0 50%; pointer-events: none; }
 
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex-shrink: 0; padding: 0; background: none; border: none; cursor: pointer; color: var(--ink-muted); transition: color var(--transition); }
+.theme-toggle:hover { color: var(--ink); }
+.theme-toggle svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+/* Light shows the moon (what you'd switch to), dark shows the sun; data-theme is set pre-paint. */
+html[data-theme='dark'] .theme-toggle .icon-moon { display: none; }
+html:not([data-theme='dark']) .theme-toggle .icon-sun { display: none; }
+
+.hamburger { display: none; flex-direction: column; gap: 5px; cursor: pointer; padding: 4px; background: none; border: none; }
+.hamburger span { width: 22px; height: 1.5px; background: var(--ink); transition: var(--transition); }
+
+/* Masthead: eyebrow and serif title. */
 .eyebrow { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-muted); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 0.9rem; display: flex; align-items: center; gap: 0.75rem; }
 .eyebrow::before { content: ''; width: 24px; height: 1px; background: var(--ink); }
 .masthead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem 2rem; margin-bottom: 1.5rem; }
-.masthead h1 { font-family: var(--font-display); font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 400; line-height: 1.1; letter-spacing: -0.01em; margin-bottom: 0.6rem; }
+.masthead h1 { font-family: var(--font-display); font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 400; line-height: 1.1; letter-spacing: -0.01em; margin-bottom: 0.6rem; text-wrap: balance; }
 .masthead h1 em { font-style: italic; text-decoration: underline; text-decoration-color: var(--signal); text-decoration-thickness: 2px; text-underline-offset: 6px; }
 .masthead .sub { color: var(--ink-muted); font-weight: 300; font-size: 1rem; line-height: 1.7; max-width: 640px; }
 
@@ -183,20 +234,33 @@ td a:hover { border-color: var(--signal); }
 
 .error { font-family: var(--font-mono); font-size: 0.8rem; color: var(--status-critical); padding: 0.75rem 0; }
 
-.colophon { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--hairline); font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-muted); letter-spacing: 0.04em; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+/* Footer: the site's, centered under a hairline. */
+footer { padding: 2.5rem 2rem; border-top: 1px solid var(--hairline); text-align: center; }
+footer p { font-size: 0.78rem; color: var(--ink-muted); font-weight: 300; }
+footer .colophon { font-family: var(--font-mono); font-size: 0.75rem; margin-top: 0.35rem; letter-spacing: 0.04em; }
+/* The sheet's own links, in the site's tertiary link style, above the copyright line. */
+footer .footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 1.75rem; margin-bottom: 0.9rem; }
+footer .footer-links a { font-size: 0.85rem; font-weight: 500; color: var(--ink-muted); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 4px; transition: color var(--transition), text-decoration-color var(--transition); }
+footer .footer-links a:hover { color: var(--ink); text-decoration-color: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  html { scroll-behavior: auto; }
 }
 @media (max-width: 1000px) {
+  .nav-links { display: none; }
+  .hamburger { display: flex; }
+  .nav-links.open { display: flex; flex-direction: column; position: absolute; top: 60px; left: 0; right: 0; background: var(--paper); border-bottom: 1px solid var(--hairline-strong); padding: 1.5rem 2rem; gap: 1rem; }
   .tiles { grid-template-columns: repeat(3, 1fr); }
   .tile { border-top: 1px solid var(--hairline); }
   .tile:nth-child(-n+3) { border-top: none; }
   .tile:nth-child(3n+1) { border-left: none; }
 }
 @media (max-width: 640px) {
-  .app { padding: 1rem 1.25rem 3rem; }
-  .topbar nav { gap: 1rem; }
+  .app { padding: 5.25rem 1.25rem 3rem; }
+  .portfolio-nav { padding: 0 1.25rem; }
+  .nav-links.open { padding: 1.5rem 1.25rem; }
+  .logo .logo-here { display: none; }
   .grid { grid-template-columns: 1fr; }
   .tiles { grid-template-columns: 1fr 1fr; }
   .tile { border-top: 1px solid var(--hairline); }

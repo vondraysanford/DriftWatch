@@ -7,6 +7,7 @@ import { ChallengeTable, DeploymentTable, PerformanceChart, PerformanceTable } f
 import { PredictionsChart, PredictionsTable, regimeLegend } from './components/PredictionsChart'
 import StatTile from './components/StatTile'
 import DataTable from './components/DataTable'
+import Nav from './components/Nav'
 import { fmtInt, fmtNum, fmtPct, fmtTime } from './format'
 
 const WINDOWS = [
@@ -71,16 +72,9 @@ export default function App() {
   const fd002Auc = data?.verdicts.length ? data.verdicts[data.verdicts.length - 1].roc_auc_by_regime.fd002 ?? null : null
 
   return (
+    <>
+    <Nav />
     <main className="app">
-      <div className="topbar">
-        <a className="logo" href="https://vondraysanford.com/">vondray<span>.sanford</span></a>
-        <nav aria-label="Links">
-          <a href="https://vondraysanford.com/#projects">Portfolio</a>
-          <a href="https://github.com/vondraysanford/DriftWatch" target="_blank" rel="noopener">GitHub</a>
-          <a href={`${API_BASE}/docs`} target="_blank" rel="noopener">API</a>
-        </nav>
-      </div>
-
       <div className="masthead">
         <div>
           <div className="eyebrow">DriftWatch · live monitoring</div>
@@ -174,11 +168,21 @@ export default function App() {
         />
       </div>
 
-      <div className="colophon">
-        <span># every number on this sheet is read from the prediction log, never typed in</span>
-        <span>© {new Date().getFullYear()} Vondray Sanford</span>
-      </div>
     </main>
+
+    <footer>
+      <p className="footer-links">
+        <a href="https://github.com/vondraysanford/DriftWatch" target="_blank" rel="noopener">
+          Source on GitHub<span className="sr-only"> (opens in new tab)</span>
+        </a>
+        <a href={`${API_BASE}/docs`} target="_blank" rel="noopener">
+          API reference<span className="sr-only"> (opens in new tab)</span>
+        </a>
+      </p>
+      <p>© {new Date().getFullYear()} Vondray Sanford</p>
+      <p className="colophon"># every number on this sheet is read from the prediction log, never typed in</p>
+    </footer>
+    </>
   )
 }
 

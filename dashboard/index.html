@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#F7F7F5" />
+    <!-- Pre-paint theme, the same snippet and localStorage key as vondraysanford.com, so a visitor
+         who chose dark there gets dark here on the first frame. ?theme=dark|light pins it for
+         screenshots and demos without touching the stored choice. -->
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search).get('theme');
+        var t = q === 'light' || q === 'dark' ? q : null;
+        if (!t) { try { t = localStorage.getItem('theme'); } catch (e) {} }
+        if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.content = t === 'dark' ? '#121216' : '#F7F7F5';
+      })();
+    </script>
     <meta name="description" content="DriftWatch: turbofan failure prediction watched for drift. Live predictions, drift verdicts, and model performance from the prediction log." />
     <title>DriftWatch — live monitoring</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
